@@ -21,15 +21,16 @@ const SHORTCUTS: { group: string; items: [string, string][] }[] = [
       ['1', 'Scene view'],
       ['2  3  4', 'Top, front and side views'],
       ['0', 'Follow the selected or main object'],
-      ['F', 'Full screen (realistic view)'],
+      ['F', 'Full screen'],
     ]
   },
   {
     group: 'Tools',
     items: [
+      ['A', 'Arrange: freeze time and place objects by hand'],
       ['V', 'Show velocity arrows'],
       ['M', 'Ruler: measure between two points'],
-      ['Esc', 'Finish measuring, or deselect'],
+      ['Esc', 'Finish arranging or measuring, or deselect'],
       ['?', 'Open this panel']
     ]
   },
@@ -57,21 +58,21 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ onClose, onSta
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-      <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto bg-slate-900 border border-white/10 rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 flex items-center justify-between px-5 py-3 bg-slate-900 border-b border-white/10">
-          <h2 className="flex items-center gap-2 text-sm font-bold text-slate-100"><Keyboard className="w-4 h-4 text-sky-400" /> Shortcuts and controls</h2>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md" onClick={onClose} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+      <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto bg-slate-900/95 border border-white/[0.08] rounded-3xl shadow-calm" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-6 py-4 bg-slate-900/95 backdrop-blur-sm border-b border-white/[0.06]">
+          <h2 className="flex items-center gap-2 font-display text-lg text-slate-50"><Keyboard className="w-4 h-4 text-blue-300" /> Shortcuts and controls</h2>
           <button onClick={onClose} className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/10" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
         <div className="grid sm:grid-cols-2 gap-x-8 gap-y-5 p-5">
           {SHORTCUTS.map(section => (
             <section key={section.group}>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">{section.group}</h3>
+              <h3 className="mb-2 text-[12px] font-medium text-slate-400">{section.group}</h3>
               <dl className="space-y-1.5">
                 {section.items.map(([keys, what]) => (
                   <div key={keys} className="flex items-baseline justify-between gap-3 text-xs">
                     <dt className="text-slate-300">{what}</dt>
-                    <dd className="shrink-0"><kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-white/10 font-mono text-[11px] text-sky-200 whitespace-nowrap">{keys}</kbd></dd>
+                    <dd className="shrink-0"><kbd className="px-1.5 py-0.5 rounded-sm bg-slate-800 border border-white/10 font-mono text-[11px] text-sky-200 whitespace-nowrap">{keys}</kbd></dd>
                   </div>
                 ))}
               </dl>
@@ -80,7 +81,7 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ onClose, onSta
         </div>
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-white/10">
           <p className="text-[11px] text-slate-500">Shortcuts work whenever you are not typing in a text box.</p>
-          <button onClick={onStartTour} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold">
+          <button onClick={onStartTour} className="shrink-0 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium">
             <Sparkles className="w-3.5 h-3.5" /> Take the tour
           </button>
         </div>
@@ -99,8 +100,8 @@ interface TourStep {
 
 const TOUR: TourStep[] = [
   {
-    title: 'Welcome to Simul-AI-tor',
-    body: 'Turn a video, or a sentence, into a live 3D physics simulation you can pause, rewind, measure and change. This short tour shows where things are.'
+    title: 'Welcome to Equilibria',
+    body: 'A quiet place to watch physics unfold. Turn a video, or a sentence, into a living 3D simulation you can pause, rewind, measure and change. This short tour shows you around.'
   },
   {
     target: 'create',
@@ -110,7 +111,7 @@ const TOUR: TourStep[] = [
   {
     target: 'demos',
     title: 'Or start from a demo',
-    body: 'Ten ready-made scenes, from a wrecking ball to a Galton board. They load instantly and need no account or key.'
+    body: 'Twelve ready-made scenes, from Newton\'s cradle and trigonometry to a black hole and time dilation. They load instantly and need no account or key.'
   },
   {
     target: 'library',
@@ -120,12 +121,12 @@ const TOUR: TourStep[] = [
   {
     target: 'stage',
     title: 'The simulation view',
-    body: 'Drag to look around, click an object to see its speed and energy or edit it, and drag objects to move them. The bar at the top has recording, a ruler, a stopwatch and velocity arrows; the bar at the bottom rewinds and replays.'
+    body: 'Drag to look around, click an object to see its speed and energy or edit it, and drag objects to move them. Nothing is drawn over the view: the toolbar above it has playback, recording, a ruler, a stopwatch, zoom and camera views, and the side panel beside it holds the live readout and settings (hide it for the full width).'
   },
   {
     target: 'chat',
-    title: 'Ask for changes',
-    body: 'The assistant can rewrite the scene for you: "make the ball heavier", "add a second ramp". Press ? at any time for the list of keyboard shortcuts.'
+    title: 'Change any scene with AI',
+    body: 'Click "AI edit" in the toolbar above any simulation to open the "Change this scene with AI" bar, then type "add a second ball", "remove the ramp" or "make gravity like the Moon". Each change is tested before you see it, and Undo takes it back. Press ? at any time for the keyboard shortcuts.'
   }
 ];
 
@@ -183,36 +184,36 @@ export const Tour: React.FC<TourProps> = ({ onClose }) => {
       {/* Dimmed backdrop with a clear window over the highlighted area */}
       {rect ? (
         <div
-          className="absolute rounded-xl ring-2 ring-sky-400 pointer-events-none transition-all duration-300"
-          style={{ left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(2, 6, 23, 0.78)' }}
+          className="absolute rounded-2xl ring-1 ring-blue-300/60 pointer-events-none transition-all duration-500 ease-out"
+          style={{ left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(10, 16, 18, 0.72), 0 0 24px rgba(134, 203, 191, 0.25)' }}
         ></div>
       ) : (
-        <div className="absolute inset-0 bg-slate-950/80"></div>
+        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"></div>
       )}
       <div className="absolute inset-0" onClick={onClose}></div>
 
-      <div className="absolute w-[min(320px,calc(100vw-24px))] p-4 bg-slate-900 border border-sky-400/40 rounded-2xl shadow-2xl" style={cardStyle} onClick={(e) => e.stopPropagation()}>
+      <div className="absolute w-[min(330px,calc(100vw-24px))] p-5 bg-slate-900/95 backdrop-blur-xl border border-white/[0.08] rounded-3xl shadow-calm" style={cardStyle} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-sm font-bold text-slate-100">{step.title}</h2>
-          <button onClick={onClose} className="-mt-1 -mr-1 p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10" aria-label="Close tour"><X className="w-4 h-4" /></button>
+          <h2 className="font-display text-lg leading-snug text-slate-50">{step.title}</h2>
+          <button onClick={onClose} className="-mt-1 -mr-1 p-1 rounded-md text-slate-400 hover:text-slate-100 hover:bg-white/5" aria-label="Close tour"><X className="w-4 h-4" /></button>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-slate-300">{step.body}</p>
-        <div className="mt-4 flex items-center justify-between">
+        <p className="mt-2 text-[13px] leading-relaxed text-slate-300">{step.body}</p>
+        <div className="mt-5 flex items-center justify-between">
           <div className="flex gap-1" aria-hidden="true">
-            {TOUR.map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all ${i === index ? 'w-4 bg-sky-400' : 'w-1.5 bg-slate-600'}`}></span>)}
+            {TOUR.map((_, i) => <span key={i} className={`h-1.5 rounded-full transition-all duration-500 ${i === index ? 'w-5 bg-blue-300' : 'w-1.5 bg-slate-600'}`}></span>)}
           </div>
           <div className="flex items-center gap-1.5">
             {index > 0 && (
-              <button onClick={() => setIndex(index - 1)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-slate-300 hover:bg-white/10">
+              <button onClick={() => setIndex(index - 1)} className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs text-slate-300 hover:bg-white/5">
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
             )}
-            <button onClick={() => (last ? onClose() : setIndex(index + 1))} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold" autoFocus>
+            <button onClick={() => (last ? onClose() : setIndex(index + 1))} className="flex items-center gap-1 px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium" autoFocus>
               {last ? 'Done' : <>Next <ArrowRight className="w-3.5 h-3.5" /></>}
             </button>
           </div>
         </div>
-        <div className="mt-2 text-[10px] text-slate-500">{index + 1} of {TOUR.length}</div>
+        <div className="mt-2 text-[11px] text-slate-500">{index + 1} of {TOUR.length}</div>
       </div>
     </div>
   );

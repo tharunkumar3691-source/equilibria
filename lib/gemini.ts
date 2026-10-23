@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel, MediaResolution } from "@google/genai";
 import { SimulationData, SimulationSlider } from "../types";
 import { checkSimulation, checkScore, problemsOf, SceneCheck } from "./validate";
 import { renderPreview } from "./preview";
@@ -7,252 +7,6 @@ import { feedbackNote } from "./feedback";
 import { SCENE_KIT_MATERIALS_DOC, SCENE_KIT_GROUNDS_DOC } from "./sceneKit";
 import { POSE_NAMES } from "./humans";
 
-// Mock Data: Wrecking Ball Collision with Damping Chain
-export const MOCK_SIMULATION_DATA: SimulationData = {
-  demoMode: true,
-  startMode: 'click',
-  startHint: "Click anywhere to release the wrecking ball",
-  thought_process: "ANALYSIS COMPLETE.\n\nScenario: High-Momentum Pendulum Impact (Wrecking Ball).\nVisuals: Heavy steel sphere attached to a multi-segment physical chain.\nInteraction: Click anywhere on the scene to release the ball.\nPhysics Profile:\n- Momentum: EXTREME (Mass ~500kg).\n- Mechanism: Multi-body Chain (PointToPoint).\n- Configuration: High stiffness, zero initial damping for maximum energy conservation.\n\nWaiting for your click...",
-  code: `
-    // 1. Setup World
-    world.gravity.set(0, -20, 0); 
-    // CRITICAL: High iteration count ensures the chain doesn't stretch (makes it "tight")
-    world.solver.iterations = 50; 
-    world.allowSleep = true; 
-    
-    // Materials
-    const steelMat = new CANNON.Material();
-    const brickMat = new CANNON.Material();
-    const floorMat = new CANNON.Material();
-
-    const steelBrickContact = new CANNON.ContactMaterial(steelMat, brickMat, { friction: 0.1, restitution: 0.5 });
-    const brickBrickContact = new CANNON.ContactMaterial(brickMat, brickMat, { friction: 0.4, restitution: 0.1 });
-    const floorBrickContact = new CANNON.ContactMaterial(floorMat, brickMat, { friction: 0.6, restitution: 0.1 });
-
-    world.addContactMaterial(steelBrickContact);
-    world.addContactMaterial(brickBrickContact);
-    world.addContactMaterial(floorBrickContact);
-
-    // 2. Static Elements
-    // Floor
-    const floorBody = new CANNON.Body({ mass: 0, material: floorMat });
-    floorBody.addShape(new CANNON.Box(new CANNON.Vec3(20, 1, 20)));
-    floorBody.position.set(0, -1, 0);
-    world.addBody(floorBody);
-    
-    const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(40, 2, 40), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 }));
-    floorMesh.position.set(0, -1, 0);
-    floorMesh.receiveShadow = true;
-    scene.add(floorMesh);
-
-    // Pivot Point (Invisible static body in sky)
-    const pivotPos = new CANNON.Vec3(0, 25, 0);
-    const pivotBody = new CANNON.Body({ mass: 0, position: pivotPos });
-    world.addBody(pivotBody);
-    
-    // Visual Pivot Box
-    const pivotMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 0.5, 2), new THREE.MeshStandardMaterial({ color: 0x475569 }));
-    pivotMesh.position.copy(pivotPos);
-    scene.add(pivotMesh);
-
-    // 3. The Chain (Multi-Body)
-    const segments = 12;
-    const chainLength = 15; 
-    const segmentLength = chainLength / segments;
-    const linkShape = new CANNON.Box(new CANNON.Vec3(0.15, segmentLength / 2, 0.15));
-    const linkGeo = new THREE.TorusGeometry(0.5, 0.15, 8, 16); 
-    
-    let previousBody = pivotBody;
-    
-    // Create chain swing angle start
-    const startAngle = Math.PI / 3; // 60 degrees
-
-    for(let i=0; i<segments; i++) {
-        // Calculate position based on angle
-        const angle = startAngle;
-        // Link centres sit half a link apart from each joint, so every joint starts exactly closed
-        const dist = (i + 0.5) * segmentLength * 0.9; // 0.9 overlap factor
-        
-        const x = pivotPos.x - Math.sin(angle) * dist;
-        const y = pivotPos.y - Math.cos(angle) * dist;
-        const z = 0;
-        
-        const body = new CANNON.Body({
-            mass: 5, // Increased mass ratio for tighter simulation
-            linearDamping: 0.0, // Zero damping = swings freely
-            angularDamping: 0.0,
-            position: new CANNON.Vec3(x, y, z),
-            shape: linkShape
-        });
-        
-        // Rotate the link so its top (local +Y) points back up the chain toward the pivot
-        body.quaternion.setFromEuler(0, 0, -startAngle);
-
-        const mesh = new THREE.Mesh(linkGeo, new THREE.MeshStandardMaterial({ color: 0x64748b }));
-        mesh.castShadow = true;
-        
-        // Rotate visuals to look like interlocked chain
-        if (i % 2 === 0) {
-            mesh.rotation.y = Math.PI / 2;
-        }
-
-        addSimulationObject('chain_' + i, mesh, body, { sound: 'metal' });
-        
-        // Constraint
-        // Pivot A: Bottom of previous body (local)
-        // Pivot B: Top of current body (local)
-        
-        let pivotA;
-        if (i === 0) {
-            pivotA = new CANNON.Vec3(0, 0, 0); // Connect to static pivot center
-        } else {
-            pivotA = new CANNON.Vec3(0, -segmentLength/2 * 0.9, 0); 
-        }
-        const pivotB = new CANNON.Vec3(0, segmentLength/2 * 0.9, 0);
-        
-        const c = new CANNON.PointToPointConstraint(previousBody, pivotA, body, pivotB);
-        c.collideConnected = false; // Joined links must not also collide, or the chain rattles against itself
-        world.addConstraint(c);
-        
-        previousBody = body;
-    }
-
-    // 4. The Wrecking Ball (Attached to last chain link)
-    const ballRadius = 2.5;
-    const ballPos = previousBody.position.clone();
-    // Continue down the chain line: half a link to its end, then one ball radius to the ball's centre
-    const ballOffset = segmentLength / 2 * 0.9 + ballRadius;
-    ballPos.x -= Math.sin(startAngle) * ballOffset;
-    ballPos.y -= Math.cos(startAngle) * ballOffset;
-
-    const ballBody = new CANNON.Body({ 
-        mass: 500, 
-        material: steelMat, 
-        shape: new CANNON.Sphere(ballRadius), 
-        position: ballPos,
-        linearDamping: 0.0, // Free movement
-        angularDamping: 0.0
-    });
-    
-    const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 32, 32), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.9, roughness: 0.1 }));
-    ballMesh.castShadow = true;
-    
-    addSimulationObject('WreckingBall', ballMesh, ballBody, { sound: 'metal', main: true });
-
-    // Link Ball to Chain
-    const ballPivotA = new CANNON.Vec3(0, -segmentLength/2 * 0.9, 0);
-    const ballPivotB = new CANNON.Vec3(0, ballRadius, 0); // Top of ball
-    ballBody.quaternion.setFromEuler(0, 0, -startAngle); // Its top faces the chain, so this joint starts closed too
-    const ballConstraint = new CANNON.PointToPointConstraint(previousBody, ballPivotA, ballBody, ballPivotB);
-    ballConstraint.collideConnected = false;
-    world.addConstraint(ballConstraint);
-
-
-    // 5. The Wall
-    const brickW = 1.2;
-    const brickH = 0.8;
-    const brickD = 1.2;
-    const cols = 6;
-    const rows = 12;
-    
-    const brickGeo = new THREE.BoxGeometry(brickW, brickH, brickD);
-    const brickMatVis = new THREE.MeshStandardMaterial({ color: 0xef4444 }); 
-    const brickShape = new CANNON.Box(new CANNON.Vec3(brickW/2, brickH/2, brickD/2));
-
-    for (let i = 0; i < rows; i++) {
-        for (let j = -cols/2; j < cols/2; j++) {
-             const x = 0; 
-             const y = brickH / 2 + 0.01 + i * brickH; // Resting on the row below, not dropped onto it
-             const z = j * brickD;
-             const zOffset = (i % 2 === 0) ? 0 : brickD / 2;
-             
-             const pos = new CANNON.Vec3(x, y, z + zOffset);
-             const bBody = new CANNON.Body({ 
-                 mass: 5, 
-                 material: brickMat, 
-                 shape: brickShape, 
-                 position: pos,
-                 allowSleep: true,
-                 sleepSpeedLimit: 0.1,
-                 sleepTimeLimit: 1
-             });
-             
-             bBody.position.x += (Math.random() - 0.5) * 0.05;
-             
-             const bMesh = new THREE.Mesh(brickGeo, brickMatVis);
-             bMesh.castShadow = true;
-             
-             addSimulationObject('brick', bMesh, bBody, { sound: 'stone' });
-        }
-    }
-  `,
-  sliders: [
-    {
-      label: "Ball Mass",
-      targetLabel: "WreckingBall",
-      property: "mass",
-      min: 50,
-      max: 2000,
-      value: 500,
-      step: 50
-    },
-    {
-      label: "Chain Damping",
-      targetLabel: "chain", 
-      property: "damping",
-      min: 0.0,
-      max: 0.9,
-      value: 0.0, // Default to 0 for free swinging
-      step: 0.01
-    },
-    {
-      label: "Gravity",
-      targetLabel: "world",
-      property: "gravity",
-      min: 0.0,
-      max: 40.0,
-      value: 20.0,
-      step: 1.0
-    },
-    {
-      label: "Time Scale",
-      targetLabel: "world",
-      property: "scale",
-      min: 0.1,
-      max: 2.0,
-      value: 1.0,
-      step: 0.1
-    },
-    {
-      label: "Brick Mass",
-      targetLabel: "brick", 
-      property: "mass",
-      min: 0.1,
-      max: 20,
-      value: 5,
-      step: 0.5
-    },
-    {
-      label: "Bounciness",
-      targetLabel: "world",
-      property: "restitution",
-      min: 0.0,
-      max: 1.0,
-      value: 0.3,
-      step: 0.1
-    },
-    {
-      label: "Friction",
-      targetLabel: "world",
-      property: "friction",
-      min: 0.0,
-      max: 1.0,
-      value: 0.4,
-      step: 0.1
-    }
-  ]
-};
-
 // Models to try, in order. Google's newest Flash model is often overloaded (503) or hangs for
 // minutes, so each request falls through to the next model instead of failing outright.
 export const MODEL_CHAIN = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
@@ -260,8 +14,8 @@ export const MODEL_CHAIN = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-fl
 export const QUALITY_CHAIN = ["gemini-3.1-pro-preview", "gemini-pro-latest", ...MODEL_CHAIN];
 export const REQUEST_TIMEOUT_MS = 75000; // Chat edits: healthy models answer in 25-50 s
 // Whole scenes are planned with deep thinking, which takes longer (Pro models longer still)
-const SCENE_TIMEOUT_MS = 120000;
-const QUALITY_TIMEOUT_MS = 240000;
+export const SCENE_TIMEOUT_MS = 120000;
+export const QUALITY_TIMEOUT_MS = 240000;
 
 // Start from whichever model answered last, so one slow model is not retried on every request
 // (remembered for 10 minutes across page reloads, then the newest model gets another chance).
@@ -278,23 +32,32 @@ const savePreferred = (index: number) => {
 };
 let preferredModel = readPreferred();
 
-// API keys, in order (GEMINI_API_KEY, GEMINI_API_KEY_2, ... in .env.local). When one runs out of free
-// quota, or is rejected, requests move on to the next. The key that last worked is remembered for an hour,
-// after which the first key gets another chance (free quotas refill).
-const API_KEYS: string[] = Array.isArray(process.env.API_KEYS) ? (process.env.API_KEYS as unknown as string[]) : (process.env.API_KEY ? [process.env.API_KEY] : []);
-export const hasApiKey = (): boolean => API_KEYS.length > 0;
+// API keys, in order (GEMINI_API_KEY, GEMINI_API_KEY_2, ... in .env.local). They stay on the server
+// (server/geminiProxy.ts), which forwards each request to Google: the page only learns how many there are
+// and names each by its slot. When one runs out of free quota, or is rejected, requests move on to the
+// next. The key that last worked is remembered for an hour, after which the first key gets another
+// chance (free quotas refill).
+const PROXY_URL = "/api/gemini";
+const keyCountReady: Promise<number> = fetch(`${PROXY_URL}/status`)
+  .then(response => (response.ok ? response.json() : { keys: 0 }))
+  .then(status => Number(status?.keys) || 0)
+  .catch(() => 0);
+export const loadKeyCount = (): Promise<number> => keyCountReady;
 const ACTIVE_KEY = "simulaitor.activeKey";
 let activeKey = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(ACTIVE_KEY) || "null");
-    if (saved && Date.now() - saved.at < 60 * 60 * 1000 && saved.index < API_KEYS.length) return saved.index;
+    if (saved && Date.now() - saved.at < 60 * 60 * 1000 && Number.isInteger(saved.index)) return saved.index;
   } catch {}
   return 0;
 })();
 const clients = new Map<number, GoogleGenAI>();
 const client = (index: number) => {
   let ai = clients.get(index);
-  if (!ai) { ai = new GoogleGenAI({ apiKey: API_KEYS[index] }); clients.set(index, ai); }
+  if (!ai) {
+    ai = new GoogleGenAI({ apiKey: `slot-${index + 1}`, httpOptions: { baseUrl: `${location.origin}${PROXY_URL}` } });
+    clients.set(index, ai);
+  }
   return ai;
 };
 
@@ -349,34 +112,38 @@ async function withModels<T>(ai: GoogleGenAI, run: (model: string, ai: GoogleGen
 
 // Runs a request with the active key, falling back across models and then across keys
 export async function withModelFallback<T>(run: (model: string, ai: GoogleGenAI) => Promise<T>, onAttempt?: (model: string) => void, chain: string[] = MODEL_CHAIN): Promise<T> {
-  if (!API_KEYS.length) throw new Error("No Gemini API key is set. Add GEMINI_API_KEY to .env.local.");
+  const count = await keyCountReady;
+  if (!count) throw new Error("No Gemini API key is set. Add GEMINI_API_KEY to .env.local.");
   let lastError: any;
-  for (let step = 0; step < API_KEYS.length; step++) {
-    const index = (activeKey + step) % API_KEYS.length;
+  for (let step = 0; step < count; step++) {
+    const index = (activeKey + step) % count;
     try {
       const result = await withModels(client(index), run, onAttempt, chain);
       if (index !== activeKey) {
-        console.info(`[Gemini] Switched to API key ${index + 1} of ${API_KEYS.length}.`);
+        console.info(`[Gemini] Switched to API key ${index + 1} of ${count}.`);
         activeKey = index;
         try { localStorage.setItem(ACTIVE_KEY, JSON.stringify({ index, at: Date.now() })); } catch {}
       }
       return result;
     } catch (error: any) {
       if (!(error instanceof KeyUnusable)) throw error;
-      console.warn(`[Gemini] API key ${index + 1} of ${API_KEYS.length} is out of quota or refused; trying the next one.`);
+      console.warn(`[Gemini] API key ${index + 1} of ${count} is out of quota or refused; trying the next one.`);
       lastError = error.cause;
     }
   }
-  throw new Error(`Every Gemini API key is out of free quota or was refused (${API_KEYS.length} tried). ${messageOf(lastError)}`);
+  throw new Error(`Every Gemini API key is out of free quota or was refused (${count} tried). ${messageOf(lastError)}`);
 }
 
 // One request with an explicit thinking level, so the model reasons through the plan before it answers.
-// Models that do not accept a thinking level (older ones) are asked again without it.
-async function generateThinking(ai: GoogleGenAI, params: any, level: ThinkingLevel) {
+// Models that do not accept a thinking level or a media resolution (older ones) are asked again without them.
+export async function generateThinking(ai: GoogleGenAI, params: any, level: ThinkingLevel) {
   try {
     return await ai.models.generateContent({ ...params, config: { ...params.config, thinkingConfig: { thinkingLevel: level } } });
   } catch (error: any) {
-    if (statusOf(error) === 400 && /think/i.test(messageOf(error))) return ai.models.generateContent(params);
+    if (statusOf(error) === 400 && /think|resolution/i.test(messageOf(error))) {
+      const { mediaResolution, ...config } = params.config || {};
+      return ai.models.generateContent({ ...params, config });
+    }
     throw error;
   }
 }
@@ -446,9 +213,10 @@ export const SCENE_KIT_GUIDE = `
     - addHuman(kind, { height, pose }): a realistic person, 'man' (1.80 m) or 'woman' (1.66 m). The figure stands with
       its feet at its origin and faces +z; place and turn h.object, or put it inside a THREE.Group. pose(h) runs when
       the model has loaded and then every frame, so a pose can follow the clock and the bodies. Inside pose use:
-        h.setPose(name, { time, seat }) with name ${POSE_NAMES.map(n => `'${n}'`).join(', ')}. 'time' (seconds since the
-          scene started) drives walking and running; 'seat' is the seat height in metres in the figure's parent frame,
-          so a sitting figure rests its hips on it.
+        h.setPose(name, { time, seat, face }) with name ${POSE_NAMES.map(n => `'${n}'`).join(', ')}. 'time' (seconds since
+          the scene started) drives walking and running; 'seat' is the seat height in metres in the figure's parent frame,
+          so a sitting figure rests its hips on it; 'face' is 'calm', 'effort' or 'breathing' (it suits the pose by
+          default, e.g. effort when pushing). People blink by themselves.
         h.aim(bone, [x, y, z]) after setPose for anything special: points one bone along a direction in the figure's
           own frame (+x its left, +y up, +z forward). Bones: Spine, Spine1, Neck, LeftArm, LeftForeArm, LeftHand,
           LeftUpLeg, LeftLeg, LeftFoot, and the same with Right.
@@ -729,7 +497,9 @@ const TEXT_MODE_NOTE = `
     - If the description is not a physical scene, build the closest realistic physical scene that fits it.
 `;
 
-export type GenerationStage = 'reading' | 'measuring' | 'analysing' | 'checking' | 'repairing' | 'reviewing' | 'improving' | 'building';
+export type GenerationStage = 'reading' | 'measuring' | 'analysing' | 'checking' | 'repairing' | 'reviewing' | 'improving' | 'building'
+  // Textbook problems (lib/problems.ts)
+  | 'solving' | 'verifying' | 'reconciling';
 
 export interface GenerationOptions {
   // Reports real progress: which step is running, with an optional detail such as the model in use
@@ -738,72 +508,97 @@ export interface GenerationOptions {
   quality?: boolean;
 }
 
-type GenerationSource =
+export type GenerationSource =
   | { kind: 'video'; base64Data: string; mimeType: string }
-  | { kind: 'text'; prompt: string };
+  | { kind: 'text'; prompt: string }
+  | { kind: 'problem'; brief: string };   // A textbook problem's set-up (lib/problems.ts)
 
 // Everything a scene request is built from
-interface SceneContext {
+export interface SceneContext {
   source: GenerationSource;
   chain: string[];
   timeout: number;
   facts: string;      // Measured from the video in a first pass ('' for text requests)
   examples: string;   // Similar scenes, as worked examples ('' when none fit)
   feedback: string;   // What this user disliked about earlier scenes ('' when nothing)
+  // Problem scenes: more instructions, and more fields in the answer
+  extraInstruction?: string;
+  extraFields?: { properties: Record<string, any>; required: string[] };
 }
 
 // A previous attempt and what is wrong with it
-interface Revision {
+export interface Revision {
   kind: 'repair' | 'improve';
   code: string;
   problems: string[];
+  extra?: string;     // More of the previous attempt to show with its code (a problem scene's measurement code)
 }
 
-interface Candidate {
+export interface Candidate {
   data: SimulationData;
   plan: string;
+  raw: any;           // The model's whole answer, for any extra fields
   check?: SceneCheck;
 }
 
-const MAX_REPAIRS = 2;   // Fix attempts after the automatic test finds problems
+export const MAX_REPAIRS = 2;   // Fix attempts after the automatic test finds problems
 
 const BASE_REQUEST = "Generate a realistic, educational 3D physics scene that is also stable. Plan it in 'scene_plan' first. Use addGround once, realMaterial on every mesh, real sizes and masses, people where the situation has people, a framed camera, and a live setReadout. Use addSimulationObject for movable objects only, each with its { sound } material.";
 
-const bulletList = (items: string[]) => items.map(p => `- ${p}`).join('\n');
+export const bulletList = (items: string[]) => items.map(p => `- ${p}`).join('\n');
 
 // One scene request to the model (with fallback across models and keys). With a revision, the model gets
 // its previous code and the problems found in it, and fixes that code instead of starting over.
-async function requestScene(ctx: SceneContext, options: GenerationOptions, stage: GenerationStage, revision?: Revision): Promise<Candidate> {
+export async function requestScene(ctx: SceneContext, options: GenerationOptions, stage: GenerationStage, revision?: Revision): Promise<Candidate> {
   const parts: any[] = [];
   const { source } = ctx;
-  if (source.kind === 'video') parts.push({ inlineData: { mimeType: source.mimeType, data: source.base64Data } });
+  // The clip is the largest part of a request. Once it has been measured, the facts carry its numbers:
+  // the first design still watches it (at low resolution), and repairs, which fix code, go without it.
+  const measured = !!ctx.facts;
+  const sendVideo = source.kind === 'video' && !(measured && revision);
+  if (source.kind === 'video' && sendVideo) parts.push({ inlineData: { mimeType: source.mimeType, data: source.base64Data } });
   if (ctx.examples) parts.push({ text: ctx.examples });
   if (ctx.facts) parts.push({ text: ctx.facts });
   if (ctx.feedback) parts.push({ text: ctx.feedback });
-  parts.push({ text: source.kind === 'video' ? BASE_REQUEST : `Scene description from the user:\n"""\n${source.prompt}\n"""\n\n${BASE_REQUEST}` });
+  parts.push({ text: source.kind === 'video'
+    ? (sendVideo ? BASE_REQUEST : `The scene rebuilds the video described by the measured facts above.\n\n${BASE_REQUEST}`)
+    : source.kind === 'problem'
+      ? `${source.brief}\n\n${BASE_REQUEST}`
+      : `Scene description from the user:\n"""\n${source.prompt}\n"""\n\n${BASE_REQUEST}` });
   if (revision) {
     const why = revision.kind === 'repair'
       ? 'An automatic test built and ran your previous scene and found these problems'
       : 'A reviewer looked at pictures of your previous scene (the opening shot, and the view a moment after it starts) and asked for these changes';
-    parts.push({ text: `${why}:\n${bulletList(revision.problems)}\n\nYour previous code:\n\`\`\`javascript\n${revision.code}\n\`\`\`\n\nReturn the complete scene again with every one of these fixed. Change only what is needed to fix them and keep everything that already works (the setting, materials, people, readout and camera, unless a problem is about them). Update scene_plan and thought_process to match.` });
+    parts.push({ text: `${why}:\n${bulletList(revision.problems)}\n\nYour previous code:\n\`\`\`javascript\n${revision.code}\n\`\`\`\n${revision.extra ? `\n${revision.extra}\n` : ''}\nReturn the complete scene again with every one of these fixed. Change only what is needed to fix them and keep everything that already works (the setting, materials, people, readout and camera, unless a problem is about them). Update scene_plan and thought_process to match.` });
   }
+  const instruction = (source.kind === 'video' ? SYSTEM_INSTRUCTION : SYSTEM_INSTRUCTION + TEXT_MODE_NOTE) + (ctx.extraInstruction || '');
+  const schema = ctx.extraFields
+    ? {
+        ...RESPONSE_SCHEMA,
+        properties: { ...RESPONSE_SCHEMA.properties, ...ctx.extraFields.properties },
+        required: [...RESPONSE_SCHEMA.required, ...ctx.extraFields.required],
+        propertyOrdering: [...RESPONSE_SCHEMA.propertyOrdering, ...Object.keys(ctx.extraFields.properties)]
+      }
+    : RESPONSE_SCHEMA;
 
   return withModelFallback(async (model, ai) => {
     const response = await generateThinking(ai, {
       model,
       contents: [{ parts }],
       config: {
-        systemInstruction: source.kind === 'text' ? SYSTEM_INSTRUCTION + TEXT_MODE_NOTE : SYSTEM_INSTRUCTION,
+        systemInstruction: instruction,
         responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
+        responseSchema: schema,
+        ...(sendVideo && measured ? { mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW } : {}),
         httpOptions: { timeout: ctx.timeout },
       }
-    }, ThinkingLevel.HIGH);
+    // Visual touch-ups are small, listed edits; physics repairs and new scenes get the full reasoning
+    }, revision?.kind === 'improve' ? ThinkingLevel.MEDIUM : ThinkingLevel.HIGH);
 
     const text = response.text;
     if (!text) throw new Error("No response text");
     const raw = JSON.parse(text);
-    return { data: normalizeSimulation(raw), plan: typeof raw.scene_plan === 'string' ? raw.scene_plan : '' };
+    return { data: normalizeSimulation(raw), plan: typeof raw.scene_plan === 'string' ? raw.scene_plan : '', raw };
   }, (model) => options.onStage?.(stage, model), ctx.chain);
 }
 
@@ -889,14 +684,12 @@ const REVIEW_SCHEMA = {
 const REVIEW_INSTRUCTION = `
     You are an art director and physics teacher reviewing a generated 3D physics simulation before a student sees it.
     You get the request, the plan, the code, and two pictures rendered from it: the opening shot (time frozen at the
-    start) and the same camera a moment after the action starts. The labelled dark boxes are panels the app draws over
-    the scene (toolbar, live readout, settings, zoom buttons, start prompt): the viewer cannot see what is behind them.
-    People may appear in a neutral pose if their model was slow to load.
+    start) and the same camera a moment after the action starts. The pictures show exactly what the viewer sees: the
+    app's controls sit around the view, never over it. People may appear in a neutral pose if their model was slow to load.
     Look for clear, visible problems only:
     - Framing: the moving object, where it goes and the people involved must be in view and fill a fair part of the frame;
-      nothing important cut off, hidden behind something or behind a panel, or tiny in the distance; the camera not
-      inside an object. To get something out from behind a panel, move camera.userData.lookAt or the camera so it sits
-      nearer the middle of the picture.
+      nothing important cut off, hidden behind something, or tiny in the distance; the camera not inside an object. To
+      bring something into view, move camera.userData.lookAt or the camera so it sits nearer the middle of the picture.
     - Realism: objects at true scale relative to each other and to people; built from proper parts, not bare boxes;
       believable materials and colours; a setting that fits the request.
     - Physics: nothing floating, sunk into the ground or overlapping; in the second picture, things moving the way the
@@ -906,7 +699,7 @@ const REVIEW_INSTRUCTION = `
     notice, and say exactly how to fix each one in terms of the code.
 `;
 
-async function reviewScene(ctx: SceneContext, options: GenerationOptions, request: string, candidate: Candidate): Promise<string[]> {
+export async function reviewScene(ctx: SceneContext, options: GenerationOptions, request: string, candidate: Candidate): Promise<string[]> {
   const preview = await renderPreview(candidate.data);
   if (!preview) return [];
   const result = await withModelFallback(async (model, ai) => {
@@ -919,7 +712,8 @@ async function reviewScene(ctx: SceneContext, options: GenerationOptions, reques
         { text: `Picture 2: the same camera ${preview.laterSeconds} s after the action starts.` },
         { inlineData: { mimeType: 'image/jpeg', data: preview.later } }
       ] }],
-      config: { systemInstruction: REVIEW_INSTRUCTION, responseMimeType: "application/json", responseSchema: REVIEW_SCHEMA, httpOptions: { timeout: ctx.timeout } }
+      // Medium resolution is plenty to judge framing, scale and materials, at a fraction of the image tokens
+      config: { systemInstruction: REVIEW_INSTRUCTION, responseMimeType: "application/json", responseSchema: REVIEW_SCHEMA, mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM, httpOptions: { timeout: ctx.timeout } }
     }, ThinkingLevel.MEDIUM);
     if (!response.text) throw new Error("No response text");
     return JSON.parse(response.text);
@@ -933,10 +727,8 @@ async function reviewScene(ctx: SceneContext, options: GenerationOptions, reques
 // Generates a scene, tests it, has it fixed (up to MAX_REPAIRS times) while the test finds problems,
 // then shows pictures of it to the model for a final improvement. The best version that runs is kept.
 async function generateChecked(source: GenerationSource, options: GenerationOptions): Promise<SimulationData> {
-  if (!hasApiKey()) {
-    console.warn("No API_KEY found. Returning mock data.");
-    options.onStage?.('analysing', 'demo data (no API key)');
-    return new Promise(resolve => setTimeout(() => resolve(MOCK_SIMULATION_DATA), 1000));
+  if (!(await loadKeyCount())) {
+    throw new Error("No Gemini API key is set, so new scenes cannot be generated. Add GEMINI_API_KEY to .env.local, or open one of the built-in demos.");
   }
 
   const ctx: SceneContext = {

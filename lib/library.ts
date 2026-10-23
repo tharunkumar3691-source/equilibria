@@ -2,6 +2,7 @@
 // There is no server: a share link carries the whole scene (compressed) after the '#'.
 import { LibraryEntry, SimulationData } from '../types';
 import { normalizeSimulation } from './gemini';
+import { parseProblem } from './problems';
 
 const LIBRARY_KEY = 'simulaitor.library';
 const SHARE_PREFIX = '#sim=';
@@ -34,7 +35,10 @@ const pack = (data: SimulationData): SimulationData => ({
   sliders: data.sliders,
   startMode: data.startMode,
   startHint: data.startHint,
-  title: data.title
+  title: data.title,
+  ...(data.environment ? { environment: data.environment } : {}),
+  ...(data.textbookPhysics ? { textbookPhysics: true } : {}),
+  ...(data.problem ? { problem: data.problem } : {})
 });
 
 export function saveToLibrary(name: string, data: SimulationData): LibraryEntry[] {
@@ -113,7 +117,24 @@ export async function decodeShare(payload: string): Promise<SimulationData> {
 // Validates anything that came from outside (a link or a file) before it is used
 export function parseShared(raw: any): SimulationData {
   const data = normalizeSimulation(raw);
-  return { ...data, title: typeof raw.title === 'string' ? raw.title.slice(0, 60) : undefined };
+  const problem = parseProblem(raw.problem);
+  return {
+    ...data, title: typeof raw.title === 'string' ? raw.title.slice(0, 60) : undefined, ...parseEnvironment(raw.environment),
+    ...(raw.textbookPhysics === true ? { textbookPhysics: true } : {}),
+    ...(problem ? { problem } : {})
+  };
+}
+
+// The real-world setting, if it is well formed (unknown settings are ignored where it is used)
+function parseEnvironment(env: any): Pick<SimulationData, 'environment'> {
+  if (!env || typeof env.setting !== 'string') return {};
+  const positive = (n: any) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  return { environment: {
+    setting: env.setting.slice(0, 24),
+    ...(positive(env.realSize) ? { realSize: env.realSize } : {}),
+    ...(positive(env.upm) ? { upm: env.upm } : {}),
+    ...(env.dressOnly === true ? { dressOnly: true } : {})
+  } };
 }
 
 export const shareUrl = (payload: string): string =>
@@ -132,13 +153,13 @@ export function clearSharePayload() {
 }
 
 export function exportFileContent(data: SimulationData): string {
-  return JSON.stringify({ app: 'simul-ai-tor', version: 1, ...pack(data) }, null, 2);
+  return JSON.stringify({ app: 'equilibria', version: 1, ...pack(data) }, null, 2);
 }
 
 export function parseImportedFile(text: string): SimulationData {
   let raw: any;
-  try { raw = JSON.parse(text); } catch { throw new Error('That file is not a Simul-AI-tor simulation (it is not valid JSON).'); }
-  try { return parseShared(raw); } catch { throw new Error('That file is not a Simul-AI-tor simulation (it has no scene code).'); }
+  try { raw = JSON.parse(text); } catch { throw new Error('That file is not an Equilibria simulation (it is not valid JSON).'); }
+  try { return parseShared(raw); } catch { throw new Error('That file is not an Equilibria simulation (it has no scene code).'); }
 }
 
 export const safeFileName = (name: string): string =>

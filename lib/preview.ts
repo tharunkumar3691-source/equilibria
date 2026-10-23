@@ -14,39 +14,10 @@ export interface ScenePreview {
 const WIDTH = 960, HEIGHT = 540;
 const LATER_SECONDS = 1.5;
 
-// The panels the live view draws over the scene (see components/PhysicsRunner.tsx), in pixels of a
-// 960 x 540 view: the toolbar, the live readout, the settings panel, the zoom buttons and the start prompt
-const PANELS = {
-  toolbar: [280, 12, 400, 40],
-  readout: [12, 64, 264, 160],
-  settings: [722, 52, 226, 240],
-  zoom: [12, 484, 170, 44],
-  startHint: [345, 470, 270, 46]
-} as const;
-
-// The rendered frame with the panels marked as labelled dark boxes, as a JPEG (base64, no prefix)
-function markPanels(source: HTMLCanvasElement, readout: boolean, waiting: boolean): string {
-  const out = document.createElement('canvas');
-  out.width = WIDTH;
-  out.height = HEIGHT;
-  const ctx = out.getContext('2d')!;
-  ctx.drawImage(source, 0, 0, WIDTH, HEIGHT);
-  const box = (name: keyof typeof PANELS, label: string) => {
-    const [x, y, w, h] = PANELS[name];
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.fillStyle = 'rgba(226, 232, 240, 0.9)';
-    ctx.font = '13px sans-serif';
-    ctx.fillText(label, x + 8, y + 20);
-  };
-  box('toolbar', 'app toolbar');
-  if (readout) box('readout', 'live readout panel');
-  box('settings', 'settings panel');
-  box('zoom', 'zoom buttons');
-  if (waiting) box('startHint', 'start prompt');
-  return out.toDataURL('image/jpeg', 0.85).split(',')[1];
+// The rendered frame as a JPEG (base64, no prefix). The live view draws nothing over the scene (its
+// controls sit around it), so the picture is exactly what the viewer sees.
+function snapshot(source: HTMLCanvasElement): string {
+  return source.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 
 export async function renderPreview(data: SimulationData): Promise<ScenePreview | null> {
@@ -65,19 +36,18 @@ export async function renderPreview(data: SimulationData): Promise<ScenePreview 
     h = buildHeadless(data, { realHumans: true, aspect: WIDTH / HEIGHT });
     await h.humansReady(5000);
     const scene = h;
-    const readout = h.readoutCalls > 0;
-    const shot = (waiting: boolean) => {
+    const shot = () => {
       scene.syncMeshes();
       renderer!.render(scene.scene, scene.camera);
-      return markPanels(canvas, readout, waiting && data.startMode === 'click');
+      return snapshot(canvas);
     };
 
     // The opening shot, framed as the live view frames it. The camera then stays put.
     h.syncMeshes();
     h.frame();
-    const start = shot(true);
+    const start = shot();
     for (let i = 0; i < Math.round(LATER_SECONDS * 60); i++) h.step();
-    const later = shot(false);
+    const later = shot();
     return { start, later, laterSeconds: LATER_SECONDS };
   } catch (e) {
     console.warn('[Preview] Could not render the scene:', e);

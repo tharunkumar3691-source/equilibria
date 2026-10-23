@@ -21,9 +21,7 @@ interface ObjectInspectorProps {
   label: string;
   api: SimApi;
   info: ObjectEditInfo;
-  style: React.CSSProperties;
   panelRef: React.RefObject<HTMLDivElement | null>;
-  onHeaderMouseDown: (e: React.MouseEvent) => void;
   onClose: () => void;
   onMass: (value: number) => void;
   onScale: (value: number) => void;
@@ -49,7 +47,7 @@ const fmt = (n: number, digits = 2) => {
 const range = "w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-sky-400 [&::-webkit-slider-thumb]:rounded-full";
 
 export const ObjectInspector: React.FC<ObjectInspectorProps> = (props) => {
-  const { label, api, info, style, panelRef, onHeaderMouseDown, onClose } = props;
+  const { label, api, info, panelRef, onClose } = props;
   const [tab, setTab] = useState<'data' | 'edit'>('data');
   const [stats, setStats] = useState<BodyStats | null>(() => api.stats());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -123,16 +121,15 @@ export const ObjectInspector: React.FC<ObjectInspectorProps> = (props) => {
   return (
     <div
       ref={panelRef}
-      className="absolute bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden z-20"
-      style={style}
+      className="w-full max-h-[440px] bg-slate-900/40 border border-white/[0.06] rounded-2xl flex flex-col overflow-hidden"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="h-8 shrink-0 bg-white/5 border-b border-white/5 flex items-center justify-between px-2.5 cursor-move select-none" onMouseDown={onHeaderMouseDown}>
-        <div className="flex items-center gap-1.5 text-slate-200 text-[11px] font-bold tracking-wide overflow-hidden">
+      <div className="h-9 shrink-0 border-b border-white/[0.05] flex items-center justify-between px-3 select-none">
+        <div className="flex items-center gap-1.5 text-slate-200 text-[12px] font-medium overflow-hidden">
           <Box className="w-3.5 h-3.5 shrink-0 text-sky-400" />
           <span className="truncate">{label}</span>
         </div>
-        <button onMouseDown={(e) => e.stopPropagation()} onClick={onClose} className="p-1 hover:bg-white/10 rounded text-slate-400" aria-label="Close inspector">
+        <button onMouseDown={(e) => e.stopPropagation()} onClick={onClose} className="p-1 hover:bg-white/10 rounded-sm text-slate-400" aria-label="Close inspector">
           <X className="w-3 h-3" />
         </button>
       </div>
@@ -169,7 +166,7 @@ export const ObjectInspector: React.FC<ObjectInspectorProps> = (props) => {
                   <span><span className="text-sky-400">━</span> speed <span className="text-amber-400 ml-1.5">━</span> kinetic energy</span>
                   <span>last 12 s</span>
                 </div>
-                <canvas ref={canvasRef} width={220} height={64} className="w-full h-16 rounded bg-black/30 border border-white/5" />
+                <canvas ref={canvasRef} width={220} height={64} className="w-full h-16 rounded-sm bg-black/30 border border-white/5" />
               </div>
               <p className="text-[10px] leading-snug text-slate-500">
                 {stats.asleep ? 'At rest. ' : ''}{info.movable ? '' : 'Fixed in place. '}Figures treat one scene unit as 1 m and one mass unit as 1 kg.
@@ -214,14 +211,14 @@ export const ObjectInspector: React.FC<ObjectInspectorProps> = (props) => {
                 <select aria-label="Object material"
                   value={info.sound}
                   onChange={(e) => props.onSound(e.target.value as SoundMaterial)}
-                  className="w-full bg-slate-800 border border-white/10 rounded px-1.5 py-1 text-[11px] text-slate-200"
+                  className="w-full bg-slate-800 border border-white/10 rounded-sm px-1.5 py-1 text-[11px] text-slate-200"
                 >
                   {SOUND_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
               <label className="space-y-1">
                 <span className="block text-[11px] text-slate-300">Colour</span>
-                <input type="color" aria-label="Object colour" value={info.color} onChange={(e) => props.onColor(e.target.value)} className="w-12 h-7 rounded cursor-pointer bg-transparent" />
+                <input type="color" aria-label="Object colour" value={info.color} onChange={(e) => props.onColor(e.target.value)} className="w-12 h-7 rounded-sm cursor-pointer bg-transparent" />
               </label>
             </div>
             <div className="space-y-1">

@@ -7,16 +7,19 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { SimulationData } from '../types';
+import { SimulationData, SimulationSlider } from '../types';
 import { FloorBounds, findFloor, pickMainBody, addBoundaryWalls, enforceBounds, clampDragGoal } from '../lib/bounds';
 import { simAudio, impactStrength, inferSoundMaterial, isSoundMaterial, AMBIENCES, Ambience, SoundMaterial, ImpactInfo } from '../lib/audio';
 import { SweepBroadphase } from '../lib/broadphase';
 import { compileScene, createRope } from '../lib/sandbox';
-import { frameShot, shotPoints } from '../lib/framing';
+import { installTextbookPhysics } from '../lib/textbookPhysics';
+import { frameShot, shotPoints, sceneBox, fitWholeScene } from '../lib/framing';
 import { createHuman, isHumanKind, Human } from '../lib/humans';
 import { realMaterial, addGround } from '../lib/sceneKit';
 import { Timeline } from '../lib/timeline';
 import { ThemeController, THEMES, ThemeId } from '../lib/themes';
+import { buildEnvironment, chooseSetting, EnvHandle, EnvironmentSpec, SETTING_PLACES } from '../lib/environments';
+import { DEMOS } from '../lib/demos';
 import { SceneRecorder, recordingSupported, downloadBlob, timestampName } from '../lib/capture';
 import { bodyStats, hasEditableShapes, isConstrained, scaleBody, duplicateBody, getBodyBounce, setBodyBounce } from '../lib/objects';
 import { safeFileName } from '../lib/library';
@@ -24,7 +27,7 @@ import { SimApi } from '../lib/simApi';
 import { ObjectInspector, ObjectEditInfo } from './ObjectInspector';
 import { ComparePanel } from './ComparePanel';
 import { Stopwatch } from './Stopwatch';
-import { Sliders, RotateCcw, MoveDiagonal, Play, Pause, Settings2, X, Sun, Plus, Square, Circle, Volume2, VolumeX, Minus, MousePointerClick, Gauge, Vibrate, ZoomIn, ZoomOut, Maximize, Minimize, Aperture, LocateFixed, Video, Camera, Ruler, Timer, MoveUpRight, PictureInPicture2, HelpCircle, Eye, Crosshair } from 'lucide-react';
+import { Sliders, RotateCcw, MoveDiagonal, Play, Pause, Sun, Square, Circle, Volume2, VolumeX, MousePointerClick, Gauge, Vibrate, ZoomIn, ZoomOut, Maximize, Minimize, Aperture, LocateFixed, Video, Camera, Ruler, Timer, MoveUpRight, PictureInPicture2, HelpCircle, Eye, Crosshair, PanelRightClose, PanelRightOpen, Sparkles, Check, Hand } from 'lucide-react';
 
 interface PhysicsRunnerProps {
   simulationData: SimulationData;
@@ -32,6 +35,10 @@ interface PhysicsRunnerProps {
   // The clip this simulation was generated from, when there is one (enables the side-by-side view)
   sourceVideoUrl?: string | null;
   onOpenHelp?: () => void;
+  onOpenChat?: () => void;   // Opens the assistant (its own button is hidden while a simulation is shown)
+  aiBusy?: boolean;          // The AI is changing this scene right now
+  aiOpen?: boolean;          // The "Change with AI" bar is open
+  footer?: React.ReactNode;  // Shown under the view and its status line (the "Change with AI" bar)
 }
 
 interface SimObject {
@@ -58,10 +65,6 @@ const ZOOM_STEP = 0.8;          // Each press of + moves the camera to 80% of it
 const ZOOM_MIN_DISTANCE = 3;
 const ZOOM_MAX_DISTANCE = 220;
 
-// Realistic mode (full screen)
-const CINEMA_UI_IDLE_MS = 2600;       // Controls fade out after this long without pointer movement
-const CINEMA_ORBIT_IDLE_MS = 4000;    // The camera starts drifting around the scene after this long
-
 const SPEED_MIN = 0.1;
 const SPEED_MAX = 3;
 const SPEED_PRESETS = [0.25, 0.5, 1, 2];
@@ -69,8 +72,86 @@ const clampSpeed = (v: number) => Math.min(Math.max(v, SPEED_MIN), SPEED_MAX);
 
 type SettingsTab = 'physics' | 'environment';
 
-export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, onError, sourceVideoUrl, onOpenHelp }) => {
+// --- One renderer for the whole session ---
+// Making a WebGL renderer and compiling its shaders takes a second or more, which was most of the wait
+// after picking a demo. So the renderer, its post-processing chain and its lighting environments are made
+// once and handed from scene to scene, and compiled shaders carry over.
+interface Stage {
+    renderer: THREE.WebGLRenderer;
+    composer: EffectComposer | null;
+    renderPass: RenderPass | null;
+    ao: GTAOPass | null;
+    pmrem: THREE.PMREMGenerator;
+    environments: Map<string, THREE.Texture>;   // Lighting environments by sky and horizon colour
+    // Rendering quality this device can sustain (see the render loop). Remembered across scenes, so a
+    // slow device does not stutter again on every scene before it steps down.
+    fxLevel: number;
+}
+let stage: Stage | null = null;
+
+function getStage(): Stage {
+    if (!stage) {
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        stage = { renderer, composer: null, renderPass: null, ao: null, pmrem: new THREE.PMREMGenerator(renderer), environments: new Map(), fxLevel: 2 };
+    }
+    return stage;
+}
+const MAX_ENVIRONMENTS = 24;
+// Where the camera was when the last view closed, so an edited scene can open on the same view
+let lastView: { position: THREE.Vector3; target: THREE.Vector3 } | null = null;
+
+// Frees the GPU memory of a scene that is no longer shown. Called a little after the next scene has been
+// drawn, so shaders both scenes use stay compiled. The realism kit's shared textures are kept.
+function disposeScene(root: THREE.Object3D) {
+    root.traverse((child: any) => {
+        if (child.geometry) child.geometry.dispose();
+        if (!child.material) return;
+        (Array.isArray(child.material) ? child.material : [child.material]).forEach((m: any) => {
+            Object.values(m).forEach((value: any) => {
+                if (value && value.isTexture && !value.userData?.shared) value.dispose();
+            });
+            m.dispose();
+        });
+    });
+}
+
+// A mass slider must not reach zero: a moving body with no mass is frozen wherever it happens to be
+const MIN_SLIDER_MASS = 0.01;
+
+// Applies one slider value to the physics, the same way when the scene is built and when the user moves
+// it ('scale' is the speed, handled by the Speed control). The world's friction and bounciness are
+// applied only when the user moves them: at build time the scene's own contact rules stand.
+function applySlider(world: CANNON.World, objects: SimObject[], slider: SimulationSlider, value: number, userMoved: boolean) {
+    if (slider.property === 'scale') return;
+    if (slider.targetLabel === 'world') {
+        if (slider.property === 'gravity') world.gravity.y = -Math.abs(value);
+        if (slider.property === 'damping') world.bodies.forEach(b => { if (b.mass > 0) b.linearDamping = value; });
+        if (userMoved && (slider.property === 'restitution' || slider.property === 'friction')) {
+            // The default contact rule covers every pair the scene gave no rule of its own: most of them
+            world.defaultContactMaterial[slider.property] = value;
+            world.contactmaterials.forEach(cm => { cm[slider.property as 'friction' | 'restitution'] = value; });
+        }
+        return;
+    }
+    // A slider also drives numbered parts: 'chain' moves 'chain_0', 'chain_1', ...
+    objects.filter(o => o.label === slider.targetLabel || o.label.startsWith(slider.targetLabel + '_')).forEach(({ body }) => {
+        if (slider.property === 'mass') {
+            body.mass = body.type === CANNON.Body.DYNAMIC ? Math.max(value, MIN_SLIDER_MASS) : value;
+            body.updateMassProperties();
+        } else if (slider.property === 'damping') {
+            body.linearDamping = value;
+            body.angularDamping = value;
+        }
+    });
+}
+
+export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, onError, sourceVideoUrl, onOpenHelp, onOpenChat, aiBusy, aiOpen, footer }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The scene on show, for the physics world (created once) to read
+  const simulationDataRef = useRef(simulationData);
+  simulationDataRef.current = simulationData;
 
   // --- TIMELINE (replay / scrubbing) ---
   const timelineRef = useRef(new Timeline());
@@ -113,7 +194,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   const noop = () => {};
   const actionsRef = useRef({
       togglePause: noop, reset: noop, stepBack: noop, stepForward: noop, vectors: noop, ruler: noop,
-      screenshot: noop, record: noop, follow: noop, escape: noop, view: (_view: CameraView) => {}
+      screenshot: noop, record: noop, follow: noop, escape: noop, arrange: noop, view: (_view: CameraView) => {}
   });
   // The world's own event listeners as the app set them up, before any scene code added its own
   const baseListenersRef = useRef<Record<string, Function[]> | null>(null);
@@ -163,10 +244,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   const zoomGoalRef = useRef<number | null>(null);
   const homeViewRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
 
-  // Realistic mode: read by the render loop, so mirrored in refs
-  const cinematicRef = useRef(false);
-  const lastPointerMoveRef = useRef(0);
-
   // Pointer Interaction Refs
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
@@ -192,6 +269,13 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
 
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
+  // Arrange mode: time is frozen and objects are placed by hand. Only the object being held moves, and it
+  // stays exactly where it is let go; when the mode ends the simulation carries on from the arrangement.
+  const [arranging, setArranging] = useState(false);
+  const arrangeRef = useRef(false);
+  const arrangePausedItRef = useRef(false);   // Arrange mode paused the simulation (so leaving it resumes)
+  // After a release in Arrange mode, a few silent steps let the object's ropes and joints settle exactly taut
+  const arrangeSettleRef = useRef<{ body: CANNON.Body; steps: number } | null>(null);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(0.8);
   // Camera shake + device vibration. On by default; people whose system asks for reduced motion
@@ -205,18 +289,77 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   // Full screen and its realistic presentation (natural lighting and reflections, drifting camera)
   const fullscreenSupported = typeof document !== 'undefined' && !!document.fullscreenEnabled;
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [cinematicEnabled, setCinematicEnabled] = useState(true);
-  const [uiHidden, setUiHidden] = useState(false);
-  const cinematic = isFullscreen && cinematicEnabled;
+  // Realistic mode shows the scene where it really happens (a desk in a study, a park, a warehouse...):
+  // the surface it stands on, the place around it and things placed nearby. See lib/environments.ts.
+  // Off until chosen; the choice is remembered.
+  const [realisticEnabled, setRealisticEnabledState] = useState(() => { try { return localStorage.getItem('simulaitor.realistic') === '1'; } catch { return false; } });
+  const realisticRef = useRef(realisticEnabled);
+  const settingRef = useRef<EnvHandle | null>(null);
+  const setupBoxRef = useRef<THREE.Box3 | null>(null);    // The set-up as built, before anything moved
+  const groundKindRef = useRef<string | null>(null);      // What the scene passed to addGround, if anything
+  const clearSetting = () => {
+      if (settingRef.current) settingRef.current.dispose();
+      settingRef.current = null;
+  };
+  // The scene's own setting, else its demo's (a saved copy of a demo), else one chosen from what it shows
+  const settingSpec = (): EnvironmentSpec => {
+      const own = simulationData.environment || DEMOS.find(d => d.data.code === simulationData.code)?.data.environment;
+      if (own) return own as EnvironmentSpec;
+      const scenario = /scenario:\s*(.+)/i.exec(simulationData.thought_process || '');
+      const text = [simulationData.title, simulationData.request, scenario && scenario[1]].filter(Boolean).join(' ');
+      return chooseSetting(text, groundKindRef.current, !!boundsRef.current);
+  };
+  // (Re)builds the setting when Realistic mode is on; returns where the scene now is, for the message
+  const buildSetting = (): string => {
+      clearSetting();
+      const scene = sceneRef.current, sun = dirLightRef.current, ambient = ambientLightRef.current;
+      const camera = cameraRef.current, controls = controlsRef.current, box = setupBoxRef.current;
+      if (!realisticRef.current || !scene || !sun || !ambient || !camera || !controls || !box || box.isEmpty()) return '';
+      const bounds = boundsRef.current;
+      try {
+          settingRef.current = buildEnvironment(settingSpec(), {
+              scene, sun, ambient, box,
+              top: bounds ? bounds.top : box.min.y,
+              floorSize: bounds ? { x: bounds.maxX - bounds.minX, z: bounds.maxZ - bounds.minZ } : null,
+              cameraDistance: camera.position.distanceTo(controls.target)
+          });
+      } catch (e) {
+          console.error('[Realistic] The real-world setting could not be built:', e);
+          settingRef.current = null;
+      }
+      return settingRef.current ? SETTING_PLACES[settingRef.current.setting] : '';
+  };
+  // Called from resetSimulation, which is memoised, so it always reaches the current versions
+  const settingFnsRef = useRef({ clear: clearSetting, build: buildSetting });
+  settingFnsRef.current = { clear: clearSetting, build: buildSetting };
+  // Changes the backdrop or lighting under the setting: it comes off first and goes back on top after
+  const underSetting = (change: () => void) => {
+      const had = !!settingRef.current;
+      clearSetting();
+      change();
+      if (had) buildSetting();
+  };
+  const setRealisticEnabled = (on: boolean) => {
+      realisticRef.current = on;
+      setRealisticEnabledState(on);
+      try { localStorage.setItem('simulaitor.realistic', on ? '1' : '0'); } catch {}
+      if (!on) {
+          clearSetting();
+          setToast('Standard view');
+          return;
+      }
+      const place = buildSetting();
+      setToast(place ? `Realistic: shown ${place}` : 'This scene already shows its own real setting');
+  };
 
   // Selection / Editing. The selected object itself lives in selectedObjRef (labels are not unique:
   // every brick in a wall shares one); the state holds what the inspector shows for it.
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [editInfo, setEditInfo] = useState<ObjectEditInfo | null>(null);
 
-  // Unified Settings Panel State
-  const [showSettings, setShowSettings] = useState(false);
-  const [isSettingsMinimized, setIsSettingsMinimized] = useState(false);
+  // The side panel (readout, inspector, tools, settings) sits beside the view, never over it.
+  // Open by default where there is room for it; the user's choice is kept from scene to scene.
+  const [showSettings, setShowSettings] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1100);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('physics');
   const [lightSettings, setLightSettings] = useState({
       intensity: 1.5,
@@ -224,26 +367,11 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       azimuth: 45, 
       elevation: 60 
   });
-  const [bgColor, setBgColor] = useState('#0f172a');
+  const [bgColor, setBgColor] = useState('#141c1e');
 
-  // Panel Positions
-  // x < 0 means "not dragged yet": the panel stays docked in the top-right corner
-  const [settingsPos, setSettingsPos] = useState({ x: -1, y: -1 });
-  const settingsSize = { w: 190, h: 340 };
-  const settingsRef = useRef<HTMLDivElement>(null);
-
-  const [inspectorPos, setInspectorPos] = useState({ x: 12, y: 64 });
   const inspectorRef = useRef<HTMLDivElement>(null);
-
-  // Drag System (UI Panels)
-  const [isDraggingUI, setIsDraggingUI] = useState(false);
-  const dragRef = useRef<{
-    target: 'settings' | 'inspector';
-    startX: number; 
-    startY: number; 
-    startPosX: number; 
-    startPosY: number;
-  }>({ target: 'settings', startX: 0, startY: 0, startPosX: 0, startPosY: 0 });
+  // The whole stage (toolbar, view, side panel, status line): what goes full screen
+  const stageRef = useRef<HTMLDivElement>(null);
 
   // --- SOUND & VIBRATION ---
   // The synthesiser lives in lib/audio.ts and outlives this component, so these only pass settings on.
@@ -348,9 +476,37 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   const togglePause = () => {
     simAudio.unlock();
     scrubResumeRef.current = false;
+    // Play while arranging: leave Arrange mode and run from the arrangement (starting the scene if it waits for a click)
+    if (arrangeRef.current) {
+        setArrangeMode(false);
+        setPausedState(false);
+        beginSimulationRef.current();
+        return;
+    }
     setPausedState(!pausedRef.current);
     // Don't deselect label on pause, it's annoying for editing
   };
+
+  // --- ARRANGE MODE ---
+  // Entering freezes time (pausing keeps every body's velocity aside). Leaving resumes only if entering
+  // paused it, and every velocity comes back except those of the objects moved by hand, which start from rest.
+  // A click-to-start scene can be arranged before it starts: clicks then grab objects instead of starting it.
+  const setArrangeMode = (on: boolean) => {
+    if (on === arrangeRef.current) return;
+    if (on) {
+        if (rulerModeRef.current) setRuler(false);   // One tool at a time
+        arrangePausedItRef.current = !pausedRef.current;
+        setPausedState(true);
+    } else {
+        dragStateRef.current = null;
+        arrangeSettleRef.current = null;
+        if (arrangePausedItRef.current) setPausedState(false);
+        arrangePausedItRef.current = false;
+    }
+    arrangeRef.current = on;
+    setArranging(on);
+  };
+  const toggleArrange = () => setArrangeMode(!arrangeRef.current);
 
   // --- TIMELINE CONTROLS ---
   // Starts the recording again from the present moment (after objects were added, removed or resized,
@@ -548,6 +704,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   };
 
   const setRuler = (on: boolean) => {
+      if (on && arrangeRef.current) setArrangeMode(false);   // One tool at a time
       rulerModeRef.current = on;
       setRulerMode(on);
       if (!on) {
@@ -560,12 +717,12 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   const changeTheme = (id: ThemeId) => {
       themeRef.current = id;
       setTheme(id);
-      if (themeControllerRef.current) themeControllerRef.current.apply(id);
+      underSetting(() => { if (themeControllerRef.current) themeControllerRef.current.apply(id); });
   };
 
   // --- FULL SCREEN & CINEMATIC MODE ---
   const toggleFullscreen = () => {
-      const el = containerRef.current;
+      const el = stageRef.current;
       if (!el || !fullscreenSupported) return;
       simAudio.unlock();
       if (document.fullscreenElement) {
@@ -579,16 +736,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   toggleFullscreenRef.current = toggleFullscreen;
 
   useEffect(() => {
-      const onChange = () => setIsFullscreen(!!containerRef.current && document.fullscreenElement === containerRef.current);
+      const onChange = () => setIsFullscreen(!!stageRef.current && document.fullscreenElement === stageRef.current);
       document.addEventListener('fullscreenchange', onChange);
       return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
-
-  useEffect(() => {
-      cinematicRef.current = cinematic;
-      lastPointerMoveRef.current = performance.now();
-      if (!cinematic) setUiHidden(false);
-  }, [cinematic]);
 
   // The scene's live readout, redrawn a few times a second (often enough to read, cheap to draw)
   useEffect(() => {
@@ -601,7 +752,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
           panel.style.display = data ? '' : 'none';
           if (!data) return;
           const title = document.createElement('div');
-          title.className = 'text-[10px] font-bold uppercase tracking-widest text-sky-300 mb-1.5';
+          title.className = 'text-[12px] font-medium text-blue-200 mb-1.5';
           title.textContent = data.title;
           panel.appendChild(title);
           data.rows.forEach(row => {
@@ -625,29 +776,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       const timer = window.setInterval(draw, 120);
       return () => window.clearInterval(timer);
   }, []);
-
-  // In realistic mode the controls fade away while the pointer rests and return when it moves
-  useEffect(() => {
-      if (!cinematic) return;
-      const el = containerRef.current;
-      if (!el) return;
-      const wake = () => {
-          lastPointerMoveRef.current = performance.now();
-          setUiHidden(false);
-      };
-      const timer = window.setInterval(() => {
-          if (performance.now() - lastPointerMoveRef.current > CINEMA_UI_IDLE_MS) setUiHidden(true);
-      }, 400);
-      el.addEventListener('pointermove', wake);
-      el.addEventListener('pointerdown', wake);
-      window.addEventListener('keydown', wake);
-      return () => {
-          window.clearInterval(timer);
-          el.removeEventListener('pointermove', wake);
-          el.removeEventListener('pointerdown', wake);
-          window.removeEventListener('keydown', wake);
-      };
-  }, [cinematic]);
 
   const changeSpeed = (value: number) => {
       const next = clampSpeed(value);
@@ -682,13 +810,15 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       setBgColor(hex);
       const scene = sceneRef.current, controller = themeControllerRef.current;
       if (!scene) return;
-      if (controller) controller.apply('original');
       themeRef.current = 'original';
       setTheme('original');
-      scene.background = new THREE.Color(hex);
-      const fog = scene.fog as THREE.Fog | null;
-      if (fog && fog.color) fog.color.set(hex);
-      if (controller) controller.capture();
+      underSetting(() => {
+          if (controller) controller.apply('original');
+          scene.background = new THREE.Color(hex);
+          const fog = scene.fog as THREE.Fog | null;
+          if (fog && fog.color) fog.color.set(hex);
+          if (controller) controller.capture();
+      });
   };
 
   // --- SELECTION ---
@@ -915,12 +1045,20 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     if (!worldRef.current || !sceneRef.current) return;
     setPaused(false);
     pausedRef.current = false;
+    // A rebuilt scene starts out of Arrange mode, in its own original arrangement
+    arrangeRef.current = false;
+    arrangePausedItRef.current = false;
+    setArranging(false);
     scrubResumeRef.current = false;
     stepRequestRef.current = 0;
     selectObjectRef.current(null);
     if (controlsRef.current) controlsRef.current.enabled = true; // Ensure controls are re-enabled
 
-    // The scene's own backdrop and lighting come back before it is rebuilt (the theme is re-applied below)
+    // The scene's own backdrop and lighting come back before it is rebuilt (the theme and the real-world
+    // setting are re-applied below), the setting first, as it went on last
+    settingFnsRef.current.clear();
+    setupBoxRef.current = null;
+    groundKindRef.current = null;
     if (themeControllerRef.current) themeControllerRef.current.restore();
 
     // Clear Physics World
@@ -939,21 +1077,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     worldRef.current.defaultContactMaterial.restitution = 0;
 
     // Clear Visuals (Fixes Chaos) - WITH NULL CHECK
-    generatedMeshesRef.current.forEach(mesh => {
-        if (!mesh) return;
-        if (mesh.parent) mesh.parent.remove(mesh);
-        
-        // Dispose geometry/material if possible
-        mesh.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) {
-                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
-                    else child.material.dispose();
-                }
-            }
-        });
-    });
+    const removed = generatedMeshesRef.current.filter(Boolean);
+    removed.forEach(mesh => { if (mesh.parent) mesh.parent.remove(mesh); });
+    // Their GPU memory is freed once the rebuilt scene has been drawn, so shaders it shares stay compiled
+    window.setTimeout(() => removed.forEach(disposeScene), 2000);
     generatedMeshesRef.current = [];
     objectsRef.current = [];
     frameCallbacksRef.current = [];
@@ -1062,17 +1189,20 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
    // A realistic person ('man' or 'woman') added to the scene, options.height metres tall. It loads in
    // the background; options.pose(human) runs once it has loaded and after every frame, so the pose
    // can follow the scene's clock and bodies. Visual only: give it a body with addSimulationObject.
+   const humanCounts: Record<string, number> = {};
    const addHuman = (kind: string, options?: { height?: number; pose?: (human: Human) => void }) => {
        const safeKind = isHumanKind(kind) ? kind : 'man';
        if (safeKind !== kind) console.warn(`[AI Sandbox] addHuman: unknown kind '${kind}'. Use 'man' or 'woman'.`);
        const pose = options && typeof options.pose === 'function' ? options.pose : null;
        const sceneAtBuild = sceneRef.current;
        const callbacks = frameCallbacksRef.current;
+       // Each figure of a kind is the next person of that kind, so two men in a scene are two different men
+       const variant = humanCounts[safeKind] = (humanCounts[safeKind] ?? -1) + 1;
        const human = createHuman(safeKind, options && Number(options.height), h => {
            // The scene may have been rebuilt while the model loaded; this figure is then gone
            if (frameCallbacksRef.current !== callbacks || !pose) return;
            try { pose(h); } catch (e) { console.error('[AI Sandbox] addHuman: pose threw:', e); }
-       });
+       }, variant);
        if (sceneAtBuild) sceneAtBuild.add(human.object);
        generatedMeshesRef.current.push(human.object);
        if (pose) callbacks.push(() => { if (human.ready) pose(human); });
@@ -1114,7 +1244,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
        // Pass the proxy scene so we track everything
        const world = worldRef.current;
        compileScene(simulationData.code)(THREE, CANNON, sceneProxy, world, cameraRef.current, addSimulationObject, addFrameCallback, getSimulationObject, addClickCallback, addRope, setAmbience, addHuman, setReadout,
-           realMaterial, (kind: string) => addGround(sceneProxy, world, kind));
+           realMaterial, (kind: string) => { groundKindRef.current = String(kind); return addGround(sceneProxy, world, kind); });
     } catch (e: any) {
         console.error("AI Code Execution Error:", e);
         if (onError) onError(`3D Runtime Error: ${e.message}`);
@@ -1125,6 +1255,13 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         else controlsRef.current.target.set(0, 0, 0);
         // Generated scenes: the camera the model chose must show the people and the moving objects
         if (!simulationData.demoMode && cameraRef.current) frameSubjects(cameraRef.current, controlsRef.current.target);
+        // Every scene opens on the whole set-up, clear of the panels: the camera steps back if it is too close
+        if (cameraRef.current) {
+            const target = controlsRef.current.target;
+            const points = shotPoints(target, objectsRef.current.map(o => o.body), generatedMeshesRef.current, sceneRef.current);
+            const viewWidth = rendererRef.current ? rendererRef.current.domElement.clientWidth : 960;
+            fitWholeScene(cameraRef.current, target, sceneBox(generatedMeshesRef.current, points), ZOOM_MAX_DISTANCE, viewWidth || 960);
+        }
     }
     simAudio.setAmbience(ambienceRef.current);
 
@@ -1152,11 +1289,18 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             ]),
             new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 })
         );
+        outline.name = 'floor-outline';   // Hidden under a real-world setting's own surface
         sceneRef.current.add(outline);
         generatedMeshesRef.current.push(outline);
     }
     boundsRef.current = bounds;
     mainBodyRef.current = main;
+
+    // --- REAL-WORLD SETTING (Realistic mode) ---
+    // Sized to the set-up as built, so it stays put however the objects move or are moved later
+    setupBoxRef.current = sceneBox(generatedMeshesRef.current, objectsRef.current.map(o => new THREE.Vector3(o.body.position.x, o.body.position.y, o.body.position.z)));
+    settingFnsRef.current.build();
+
     // --- SPEED ---
     // A simulation may suggest a starting speed through a 'scale' slider; the built-in Speed control
     // replaces that slider. Reset keeps whatever speed the user has chosen.
@@ -1175,34 +1319,11 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         }
         
         newValues[slider.label] = val;
-        
-        // Apply physics params ('scale' is handled by the Speed control above)
-        if (slider.property === 'scale') {
-            return;
-        } else if (slider.targetLabel === 'world' && slider.property === 'gravity') {
-            worldRef.current!.gravity.y = -Math.abs(val); 
-        } else if (slider.targetLabel === 'world' && slider.property === 'damping') {
-             worldRef.current!.bodies.forEach(b => {
-                 if (b.mass > 0) b.linearDamping = val;
-             });
-        }
-
-        const targets = objectsRef.current.filter(o => o.label === slider.targetLabel || o.label.startsWith(slider.targetLabel + '_'));
-        targets.forEach(obj => {
-             if (slider.property === 'mass') {
-                obj.body.mass = val;
-                obj.body.updateMassProperties();
-             } else if (slider.property === 'damping') {
-                obj.body.linearDamping = val;
-                obj.body.angularDamping = val;
-             }
-        });
+        applySlider(worldRef.current!, objectsRef.current, slider, val, false);
     });
     setSliderValues(newValues);
     sliderValuesRef.current = newValues; // Sync Ref
     
-    // Speed is always available, so the panel always has something to show
-    setShowSettings(true);
 
     // Every (re)build of a click-to-start scene waits for the user again
     const needsStart = simulationData.startMode === 'click';
@@ -1240,11 +1361,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     camera.lookAt(0, 5, 0);
     cameraRef.current = camera;
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // Renderer: the session's one renderer, moved into this view
+    const shared = getStage();
+    const renderer = shared.renderer;
     renderer.setSize(width, height);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -1254,7 +1374,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     controls.dampingFactor = 0.05;
     controls.minDistance = ZOOM_MIN_DISTANCE;
     controls.maxDistance = ZOOM_MAX_DISTANCE;
-    controls.autoRotateSpeed = 0.7; // Used by realistic mode: one slow orbit in about 85 seconds
     // Wheel, pinch or drag takes over from an animated zoom
     controls.addEventListener('start', () => { zoomGoalRef.current = null; cameraGoalRef.current = null; });
     controlsRef.current = controls;
@@ -1286,6 +1405,8 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     world.gravity.set(0, -9.82, 0);
     world.broadphase = new SweepBroadphase(world);
     (world.solver as any).iterations = 10;
+    // Problem scenes get friction as mu x N; the world is reused, so each scene decides (lib/friction.ts)
+    installTextbookPhysics(world, () => !!simulationDataRef.current?.textbookPhysics);
     worldRef.current = world;
 
     // Backdrop and lighting themes (needs the lights above)
@@ -1303,12 +1424,14 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             timelineRef.current.record(world, world.time - sceneStartTimeRef.current);
         }
     });
-    // Drag steering: runs before every physics step while something is held.
-    // The held body's velocity is set toward the cursor, its spin is cancelled and gravity is offset,
-    // so it follows the pointer smoothly without swinging, spinning or building up energy.
+    // Drag steering, while something is held: its velocity is set toward the cursor, its spin is cancelled
+    // and gravity is offset, so it follows the pointer smoothly without swinging, spinning or building up energy.
+    // It runs at the END of each step, setting up the next one. cannon-es fires 'preStep' after its solver,
+    // so steering set there skipped every joint and contact: a held pendulum bob came off its string and a
+    // held box went through walls. Set here, the next step's solver keeps strings taut and solids solid.
     const dragVelocity = new CANNON.Vec3();
     const dragGoal = new CANNON.Vec3();
-    world.addEventListener('preStep', () => {
+    world.addEventListener('postStep', () => {
         const drag = dragStateRef.current;
         if (!drag) return;
         const b = drag.body;
@@ -1323,11 +1446,12 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             (dragGoal.x - b.position.x) * DRAG_STIFFNESS * b.linearFactor.x,
             (dragGoal.y - b.position.y) * DRAG_STIFFNESS * b.linearFactor.y,
             (dragGoal.z - b.position.z) * DRAG_STIFFNESS * b.linearFactor.z
-        );        const dragSpeed = dragVelocity.length();
+        );
+        const dragSpeed = dragVelocity.length();
         if (dragSpeed > DRAG_MAX_SPEED) dragVelocity.scale(DRAG_MAX_SPEED / dragSpeed, dragVelocity);
         b.velocity.copy(dragVelocity);
         b.angularVelocity.set(0, 0, 0);
-        // Offset gravity for the held body (forces are cleared after every step)
+        // Offset gravity for the held body during the next step (the step that just ended cleared all forces)
         b.force.x -= b.mass * world.gravity.x;
         b.force.y -= b.mass * world.gravity.y;
         b.force.z -= b.mass * world.gravity.z;
@@ -1429,6 +1553,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         const b = drag.body;
         if (pausedRef.current) {
             b.velocity.set(0, 0, 0);
+            // Arranged by hand: it starts from rest when time runs again, wherever it was moving before
+            const saved = arrangeRef.current && pausedVelocitiesRef.current ? pausedVelocitiesRef.current.get(b) : null;
+            if (saved) { saved.v.set(0, 0, 0); saved.w.set(0, 0, 0); }
+            if (arrangeRef.current) arrangeSettleRef.current = { body: b, steps: 12 };
         } else {
             const releaseSpeed = b.velocity.length();
             if (releaseSpeed > RELEASE_MAX_SPEED) b.velocity.scale(RELEASE_MAX_SPEED / releaseSpeed, b.velocity);
@@ -1444,8 +1572,8 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             clickStartRef.current = { x: e.clientX, y: e.clientY, obj: null, ruler: true };
             return;
         }
-        if (awaitingStartRef.current) {
-            // Waiting for the start click: nothing can be grabbed yet, but the camera can still be orbited
+        if (awaitingStartRef.current && !arrangeRef.current) {
+            // Waiting for the start click: nothing can be grabbed yet (unless arranging), but the camera can still be orbited
             clickStartRef.current = { x: e.clientX, y: e.clientY, obj: null };
             return;
         }
@@ -1537,6 +1665,9 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                          rulerPointsRef.current = points.length >= 2 ? [point] : [...points, point];
                          refreshRuler();
                      }
+                } else if (arrangeRef.current) {
+                     // Arranging: a click only selects (it never starts the scene or runs the scene's own click actions)
+                     selectObjectRef.current(clickStartRef.current.obj);
                 } else if (awaitingStartRef.current) {
                      // A click anywhere on the view starts the simulation (a drag only orbits the camera)
                      beginSimulationRef.current();
@@ -1566,35 +1697,89 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     };
 
     // --- RENDERING ---
-    // Always: light from a sky-and-ground environment (natural soft fill and real reflections on shiny
-    // surfaces) in place of most of the flat ambient light, with neutral tone mapping (true colours,
-    // soft highlights). Realistic mode (full screen) adds ambient occlusion, multisampled anti-aliasing
-    // and a faint glow on the very brightest highlights; that chain is built on first use.
-    let composer: any = null;
+    // Always: light from a sky-and-ground environment tinted by the scene's own backdrop (natural soft
+    // fill and matching reflections on shiny surfaces) in place of most of the flat ambient light, with
+    // neutral tone mapping (true colours, soft highlights), and a sun shadow fitted to what the camera
+    // looks at. The full chain (ambient occlusion, multisampled anti-aliasing, a faint glow on the very
+    // brightest highlights, sharp pixels on high-density screens) is used whenever the device keeps up,
+    // and steps down a level at a time when it does not.
+    let composer: EffectComposer | null = null;
     let environment: THREE.Texture | null = null;
-    let fxActive: boolean | null = null;  // What the renderer is currently set up for (null: not yet)
-    let fxDisabled = false;   // Set when this device cannot keep up; the rest of realistic mode stays on
+    let environmentBackdrop: any = undefined;   // The backdrop 'environment' was made for
+    // 2: full chain at screen density, 1: full chain at 1 pixel per CSS pixel, 0: plain renderer
+    let fxLevel = shared.fxLevel;
+    let fxActive: number | null = null;  // The level the renderer is currently set up for (null: not yet)
     let slowFrames = 0;
+    // The shared post-processing chain, pointed at this view's scene and camera (made on first use)
     const ensureComposer = () => {
         if (composer) return composer;
-        const size = renderer.getSize(new THREE.Vector2());
-        // Multisampled, or the post-processing chain would lose the renderer's anti-aliasing
-        composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 }));
-        composer.addPass(new RenderPass(scene, camera));
-        // Ambient occlusion: the soft darkening where objects meet the floor and each other
-        const ao = new GTAOPass(scene, camera, size.x, size.y);
-        ao.updateGtaoMaterial({ radius: 0.8, distanceExponent: 1, thickness: 1, scale: 1, samples: 16 });
-        ao.blendIntensity = 0.85;
-        composer.addPass(ao);
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.12, 0.3, 1.0));
-        composer.addPass(new OutputPass()); // Applies the tone mapping and converts to screen colours
+        if (!shared.composer) {
+            const size = renderer.getSize(new THREE.Vector2());
+            // Multisampled, or the post-processing chain would lose the renderer's anti-aliasing
+            const chain = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 }));
+            shared.renderPass = new RenderPass(scene, camera);
+            chain.addPass(shared.renderPass);
+            // Ambient occlusion: the soft darkening where objects meet the floor and each other
+            shared.ao = new GTAOPass(scene, camera, size.x, size.y);
+            shared.ao.updateGtaoMaterial({ radius: 0.8, distanceExponent: 1, thickness: 1, scale: 1, samples: 12 });
+            shared.ao.blendIntensity = 0.85;
+            chain.addPass(shared.ao);
+            chain.addPass(new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.12, 0.3, 1.0));
+            chain.addPass(new OutputPass()); // Applies the tone mapping and converts to screen colours
+            shared.composer = chain;
+        }
+        shared.renderPass!.scene = scene;
+        shared.renderPass!.camera = camera;
+        shared.ao!.scene = scene;
+        shared.ao!.camera = camera;
+        composer = shared.composer;
         return composer;
+    };
+    // The backdrop's top and horizon colours: a plain colour, or the gradient canvas the scene kit and
+    // the themes draw. Null for anything else (no backdrop, an image).
+    const backdropColors = (bg: any): [THREE.Color, THREE.Color] | null => {
+        if (bg && bg.isColor) return [bg.clone(), bg.clone()];
+        const canvas = bg && bg.isTexture ? bg.image : null;
+        if (!(canvas instanceof HTMLCanvasElement) || !canvas.width || !canvas.height) return null;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        const pick = (y: number) => {
+            const [r, g, b] = ctx.getImageData(0, y, 1, 1).data;
+            return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+        };
+        return [pick(0), pick(canvas.height - 1)];
+    };
+    // A neutral reference colour given the backdrop colour's hue and half its saturation, at the
+    // reference's own lightness: outdoor scenes get a blue sky, warm rooms a warm one, and a dark
+    // backdrop never darkens the fill light (the ambient strength still does that, below).
+    const tint = (reference: THREE.Color, backdrop: THREE.Color) => {
+        const ref = { h: 0, s: 0, l: 0 }, back = { h: 0, s: 0, l: 0 };
+        reference.getHSL(ref);
+        backdrop.getHSL(back);
+        return new THREE.Color().setHSL(back.h, back.s * 0.5, ref.l);
     };
     // Sky above, a darker ground below and a soft horizon between: tops of objects catch the most
     // light, sides less and undersides little, as outdoors, and shiny surfaces reflect a horizon.
+    // Rebuilt when the backdrop changes (a new scene, a theme, a picked colour).
     const ensureEnvironment = () => {
-        if (environment) return environment;
-        const sky = new THREE.Color(0.95, 0.98, 1.0), horizon = new THREE.Color(0.5, 0.5, 0.52), ground = new THREE.Color(0.1, 0.095, 0.09);
+        const bg: any = scene.background;
+        const colorKey = bg && bg.isColor ? bg.getHexString() : null;
+        if (environment && (bg === environmentBackdrop || (colorKey && colorKey === environmentBackdrop))) return environment;
+        environmentBackdrop = colorKey || bg;
+        let sky = new THREE.Color(0.95, 0.98, 1.0), horizon = new THREE.Color(0.5, 0.5, 0.52);
+        const ground = new THREE.Color(0.1, 0.095, 0.09);
+        const backdrop = backdropColors(bg);
+        if (backdrop) {
+            sky = tint(sky, backdrop[0]);
+            horizon = tint(horizon, backdrop[1]);
+        }
+        // Scenes with the same sky share one environment
+        const key = sky.getHexString() + horizon.getHexString();
+        const cached = shared.environments.get(key);
+        if (cached) {
+            environment = cached;
+            return environment;
+        }
         const geometry = new THREE.SphereGeometry(10, 64, 32);
         const position = geometry.attributes.position;
         const colors = new Float32Array(position.count * 3);
@@ -1609,35 +1794,95 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
         const envScene = new THREE.Scene();
         envScene.add(new THREE.Mesh(geometry, material));
-        const pmrem = new THREE.PMREMGenerator(renderer);
-        environment = pmrem.fromScene(envScene, 0.02).texture;
-        pmrem.dispose();
+        environment = shared.pmrem.fromScene(envScene, 0.02).texture;
         geometry.dispose();
         material.dispose();
+        if (shared.environments.size >= MAX_ENVIRONMENTS) {
+            // Forget the oldest (Map keeps insertion order); never the one a live view may still use
+            const [oldestKey, oldest] = shared.environments.entries().next().value!;
+            shared.environments.delete(oldestKey);
+            if (oldest !== scene.environment) oldest.dispose();
+        }
+        shared.environments.set(key, environment);
         return environment;
     };
     // The environment takes over most of the flat ambient light and follows its strength, so dark
     // scenes (night, space, the solar system) stay dark. The ambient is put back after the frame.
+    // The sun's shadow covers what the camera looks at instead of the whole 60 x 60 m floor, so small
+    // set-ups (a cradle, a domino run) get crisp shadows and zooming out widens it. The sun keeps its
+    // direction (set by the lighting panel); it is only moved for the render and put back after.
+    const savedSunPosition = new THREE.Vector3();
+    const savedSunTarget = new THREE.Vector3();
+    const sunDirection = new THREE.Vector3();
+    const shadowFocus = new THREE.Vector3();
+    const lightBasis = new THREE.Matrix4();
+    const lightBasisInverse = new THREE.Matrix4();
+    const worldUp = new THREE.Vector3(0, 1, 0), sideUp = new THREE.Vector3(0, 0, 1), origin = new THREE.Vector3();
+    const fitSunShadow = () => {
+        savedSunPosition.copy(dirLight.position);
+        savedSunTarget.copy(dirLight.target.position);
+        sunDirection.copy(dirLight.position).sub(dirLight.target.position);
+        if (!dirLight.castShadow || sunDirection.lengthSq() < 1e-6) return false;
+        sunDirection.normalize();
+        const span = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * 0.9, 6, 40);
+        const texel = (2 * span) / dirLight.shadow.mapSize.width;
+        // Snap the focus to whole shadow-map pixels as seen from the sun, so shadow edges stay still
+        // instead of shimmering while the camera moves
+        lightBasis.lookAt(sunDirection, origin, Math.abs(sunDirection.y) > 0.99 ? sideUp : worldUp);
+        lightBasisInverse.copy(lightBasis).transpose();
+        shadowFocus.copy(controls.target).applyMatrix4(lightBasisInverse);
+        shadowFocus.x = Math.round(shadowFocus.x / texel) * texel;
+        shadowFocus.y = Math.round(shadowFocus.y / texel) * texel;
+        shadowFocus.applyMatrix4(lightBasis);
+
+        dirLight.target.position.copy(shadowFocus);
+        dirLight.target.updateMatrixWorld();
+        dirLight.position.copy(shadowFocus).addScaledVector(sunDirection, 60);
+        const shadowCamera = dirLight.shadow.camera;
+        shadowCamera.left = shadowCamera.bottom = -span;
+        shadowCamera.right = shadowCamera.top = span;
+        shadowCamera.near = 1;
+        shadowCamera.far = 160;
+        shadowCamera.updateProjectionMatrix();
+        dirLight.shadow.normalBias = texel; // Proportional to the pixel size: no acne, no floating shadows
+        return true;
+    };
+    const restoreSun = () => {
+        dirLight.position.copy(savedSunPosition);
+        dirLight.target.position.copy(savedSunTarget);
+        dirLight.target.updateMatrixWorld();
+    };
+
     const renderFrame = (fx: boolean, dt: number) => {
         const ambient = ambientLight.intensity;
-        scene.environmentIntensity = Math.min(ambient * 1.1, 0.8);
-        ambientLight.intensity = ambient * 0.2;
+        const setting = settingRef.current;
+        scene.environment = ensureEnvironment();
+        if (setting && setting.ibl === 'sky') {
+            // Outdoors (a park): the sky does the fill, blue from above, so shade looks like daylight
+            scene.environmentIntensity = Math.min(0.35 + ambient * 0.8, 0.75);
+            ambientLight.intensity = ambient * 0.1;
+        } else {
+            scene.environmentIntensity = Math.min(ambient * 1.1, 0.8);
+            ambientLight.intensity = ambient * 0.2;
+        }
+        const fitted = fitSunShadow();
         if (fx) ensureComposer().render(dt);
         else renderer.render(scene, camera);
+        if (fitted) restoreSun();
         ambientLight.intensity = ambient;
     };
-    const applyRenderMode = (fx: boolean) => {
-        if (fx === fxActive) return;
-        fxActive = fx;
-        const ratio = fx ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
+    const applyRenderMode = (level: number) => {
+        if (level === fxActive) return;
+        fxActive = level;
+        // 1.5 pixels per CSS pixel is sharp on high-density screens at about half the cost of 2
+        const ratio = level >= 2 ? Math.min(window.devicePixelRatio || 1, 1.5) : 1;
         renderer.setPixelRatio(ratio);
         renderer.toneMapping = THREE.NeutralToneMapping;
         renderer.toneMappingExposure = 1;
-        scene.environment = ensureEnvironment();
         const w = container.clientWidth, h = container.clientHeight;
         if (!w || !h) return;
         renderer.setSize(w, h);
-        if (fx) {
+        if (level > 0) {
             const c = ensureComposer();
             c.setPixelRatio(ratio);
             c.setSize(w, h);
@@ -1667,7 +1912,8 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
 
         if (key === ' ' || key === 'Enter') {
             if (el && /^(BUTTON|A)$/.test(el.tagName)) return; // Space / Enter belong to the focused control
-            if (awaitingStartRef.current) { e.preventDefault(); beginSimulationRef.current(); }
+            if (arrangeRef.current) { e.preventDefault(); actions.togglePause(); }   // Go: run from the arrangement
+            else if (awaitingStartRef.current) { e.preventDefault(); beginSimulationRef.current(); }
             else if (key === ' ') { e.preventDefault(); actions.togglePause(); }
             return;
         }
@@ -1679,7 +1925,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             f: () => toggleFullscreenRef.current(),
             r: actions.reset,
             ArrowLeft: actions.stepBack, ArrowRight: actions.stepForward,
-            v: actions.vectors, m: actions.ruler, p: actions.screenshot, e: actions.record,
+            v: actions.vectors, m: actions.ruler, p: actions.screenshot, e: actions.record, a: actions.arrange,
             '1': () => actions.view('home'), '2': () => actions.view('top'), '3': () => actions.view('front'), '4': () => actions.view('side'),
             '0': actions.follow
         };
@@ -1706,8 +1952,8 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     if ((import.meta as any).env?.DEV) {
         (window as any).__simDebug = {
             world, camera, controls, objects: objectsRef, drag: dragStateRef, shake: shakeRef, speed: timeScaleRef, audio: simAudio,
-            bounds: boundsRef, main: mainBodyRef, cinematic: cinematicRef, zoomGoal: zoomGoalRef,
-            fx: () => ({ active: fxActive, disabled: fxDisabled, composer: !!composer, toneMapping: renderer.toneMapping, pixelRatio: renderer.getPixelRatio() }),
+            bounds: boundsRef, main: mainBodyRef, zoomGoal: zoomGoalRef,
+            fx: () => ({ active: (fxActive ?? 0) > 0, level: fxLevel, composer: !!composer, toneMapping: renderer.toneMapping, pixelRatio: renderer.getPixelRatio(), shadowSpan: dirLight.shadow.camera.right }),
             // Lets tests see the full-screen presentation where the host refuses real full screen
             forceFullscreenState: setIsFullscreen,
             timeline: timelineRef, api: simApi, selected: selectedObjRef, select: (label: string) => selectObjectRef.current(objectsRef.current.find(o => o.label === label) || null),
@@ -1722,6 +1968,13 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     controls.update();
     homeViewRef.current = { position: camera.position.clone(), target: controls.target.clone() };
     zoomGoalRef.current = null;
+    // A scene just changed by the AI (or an undo) keeps the camera where the user had it; "reset view"
+    // still goes to the scene's own view
+    if (simulationData.keepView && lastView) {
+        camera.position.copy(lastView.position);
+        controls.target.copy(lastView.target);
+        controls.update();
+    }
 
     // Rolling / sliding rumble and air whoosh, measured from the live physics state after each step
     const updateContinuousSound = (w: CANNON.World, rate: number) => { // rate: slow motion sounds slower, as it looks
@@ -1785,7 +2038,9 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
 
     // --- ANIMATION LOOP ---
     const fixedTimeStep = 1 / 60;
-    const maxSubSteps = 10;
+    // Catch-up steps after a slow frame. More would make the next frame slower still (a spiral into
+    // stutter); with this many, a struggling device runs the simulation slightly slower instead.
+    const maxSubSteps = 5;
     let lastTime = 0;
     let soundRunning = false;
     const shakeOffset = new THREE.Vector3();
@@ -1797,7 +2052,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         const frameSeconds = (time - lastTime) / 1000;
         const dt = Math.min(frameSeconds, 0.1);
         lastTime = time;
-        const cinema = cinematicRef.current;
 
         const w = worldRef.current;
         const tl = timelineRef.current;
@@ -1811,7 +2065,48 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             timelineDirtyRef.current = false;
         };
         if (w) {
-            if (awaitingStartRef.current) {
+            if (arrangeRef.current) {
+                // Arrange mode: time is frozen. While something is held, the physics steps with no gravity and
+                // every other body pinned exactly where it is, so only the held object moves (its ropes and
+                // joints still keep it on its path, and it cannot pass through its neighbours). The clock does
+                // not move and nothing is recorded. Frame callbacks run so ropes and readouts follow the hand.
+                // The object in hand, or the one just let go while its ropes settle (at rest, in single steps)
+                const settling = !dragStateRef.current && arrangeSettleRef.current && arrangeSettleRef.current.body.world === w
+                    ? arrangeSettleRef.current : null;
+                if (!dragStateRef.current) arrangeSettleRef.current = settling && settling.steps > 1 ? { ...settling, steps: settling.steps - 1 } : null;
+                const held = dragStateRef.current ? dragStateRef.current.body : settling ? settling.body : null;
+                if (held) {
+                    const clockBefore = w.time;
+                    const originalGravity = w.gravity.clone();
+                    w.gravity.set(0, 0, 0);
+                    const pinned: [CANNON.Body, CANNON.Vec3, CANNON.Quaternion][] = [];
+                    w.bodies.forEach(b => {
+                        if (b === held || b.type !== CANNON.Body.DYNAMIC) return;
+                        pinned.push([b, b.position.clone(), b.quaternion.clone()]);
+                        b.velocity.set(0, 0, 0);
+                        b.angularVelocity.set(0, 0, 0);
+                    });
+                    if (settling) {
+                        held.velocity.set(0, 0, 0);
+                        held.angularVelocity.set(0, 0, 0);
+                        w.step(fixedTimeStep);
+                        held.velocity.set(0, 0, 0);
+                        held.angularVelocity.set(0, 0, 0);
+                    } else {
+                        w.step(fixedTimeStep, dt, maxSubSteps);
+                    }
+                    pinned.forEach(([b, p, q]) => {
+                        b.position.copy(p); b.previousPosition.copy(p); b.interpolatedPosition.copy(p);
+                        b.quaternion.copy(q); b.previousQuaternion.copy(q); b.interpolatedQuaternion.copy(q);
+                        b.velocity.set(0, 0, 0);
+                        b.angularVelocity.set(0, 0, 0);
+                        b.aabbNeedsUpdate = true;
+                    });
+                    w.gravity.copy(originalGravity);
+                    w.time = clockBefore;
+                    runFrameCallbacks();
+                }
+            } else if (awaitingStartRef.current) {
                 // Click-to-start: hold everything exactly as built (initial poses and velocities intact)
             } else if (!pausedRef.current) {
                 const rate = timeScaleRef.current;
@@ -1830,6 +2125,8 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                     liveStepRef.current = false;
                     runFrameCallbacks();
                     updateContinuousSound(w, rate);
+                    // A real-world setting with its own motion (other bowlers on the next lanes) moves in step
+                    if (settingRef.current && settingRef.current.update) settingRef.current.update(dt * rate);
                     steppedLive = true;
                 }
                 running = true;
@@ -2002,9 +2299,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             if (Math.abs(zoomGoalRef.current - next) < 0.01) zoomGoalRef.current = null;
         }
 
-        // Realistic mode: once the pointer has rested, the camera drifts slowly around the scene.
-        // (The controls pause the drift by themselves while the user is orbiting.)
-        controls.autoRotate = cinema && !drag && time - lastPointerMoveRef.current > CINEMA_ORBIT_IDLE_MS;
         controls.update();
 
         // Vibration: heavy impacts jolt the camera for a moment. The offset is applied for this frame's
@@ -2023,18 +2317,20 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         }
         shakeRef.current = shake * Math.exp(-dt * 9);
 
-        // Realistic mode renders through its own chain; if this device cannot hold a usable frame
-        // rate with it, fall back to the plain renderer and keep the rest of realistic mode.
-        const fx = cinema && !fxDisabled;
-        applyRenderMode(fx);
-        if (fx) {
-            if (frameSeconds < 0.5) slowFrames = frameSeconds > 0.05 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
-            if (slowFrames > 90) {
-                fxDisabled = true;
-                console.info('[Simul-AI-tor] Realistic rendering switched off: the frame rate was too low on this device.');
+        // Rendering quality steps down one level at a time while this device cannot hold about 30 frames
+        // a second (long pauses, such as a hidden tab, are not counted), within about a second and a half,
+        // and never steps back up. The level is kept for the next scene.
+        applyRenderMode(fxLevel);
+        if (fxLevel > 0 && frameSeconds < 0.5) {
+            slowFrames = frameSeconds > 0.034 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
+            if (slowFrames > 45) {
+                fxLevel--;
+                shared.fxLevel = fxLevel;
+                slowFrames = 0;
+                console.info(`[Equilibria] Rendering quality lowered to level ${fxLevel}: the frame rate was too low on this device.`);
             }
         }
-        renderFrame(fx, dt);
+        renderFrame(fxLevel > 0, dt);
         if (shaken) camera.position.sub(shakeOffset);
 
         // Ruler read-out: an HTML label placed over the middle of the measured line
@@ -2096,13 +2392,18 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         dragStateRef.current = null;
         // A recording in progress ends with this view; what was captured so far is still saved
         stopRecordingRef.current();
+        settingFnsRef.current.clear();
         themeController.dispose();
         themeControllerRef.current = null;
         selectedObjRef.current = null;
         runFrameCallbacksRef.current = () => {};
-        if (composer) composer.dispose();
-        if (environment) environment.dispose();
-        renderer.dispose();
+        // The renderer, post-processing chain and environments are the session's and stay. The camera
+        // controls listen on the shared canvas, so they go now; this scene's GPU memory is freed once the
+        // next scene has been drawn, so the shaders both use stay compiled.
+        lastView = { position: camera.position.clone(), target: controls.target.clone() };
+        controls.dispose();
+        scene.environment = null;
+        window.setTimeout(() => disposeScene(scene), 2000);
 
         // The synthesiser is shared and stays alive; just silence this scene's continuous sounds
         simAudio.hush();
@@ -2117,46 +2418,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       const slider = simulationData.sliders.find(s => s.label === label);
       if (!slider || !worldRef.current) return;
 
-      if (slider.property === 'scale') {
-          changeSpeed(newVal);
-      } else if (slider.targetLabel === 'world') {
-          if (slider.property === 'gravity') worldRef.current.gravity.y = -Math.abs(newVal);
-          if (slider.property === 'damping') worldRef.current.bodies.forEach(b => b.linearDamping = newVal);
-          if (slider.property === 'restitution' || slider.property === 'friction') {
-             worldRef.current.contactmaterials.forEach(cm => {
-                 (cm as any)[slider.property] = newVal;
-             });
-          }
-      } else {
-          // MODIFIED: Support partial string matching so 'chain' slider affects 'chain_0', 'chain_1', etc.
-          const targets = objectsRef.current.filter(o => o.label === slider.targetLabel || o.label.startsWith(slider.targetLabel + '_'));
-          targets.forEach(obj => {
-               if (slider.property === 'mass') {
-                  obj.body.mass = newVal;
-                  obj.body.updateMassProperties();
-               } else if (slider.property === 'damping') {
-                  obj.body.linearDamping = newVal;
-                  obj.body.angularDamping = newVal;
-               }
-          });
-      }
+      if (slider.property === 'scale') changeSpeed(newVal);
+      else applySlider(worldRef.current, objectsRef.current, slider, newVal, true);
       // No physics step is needed here: the render loop picks the new values up on its next frame
       // (stepping with a zero time step, as this used to, divides by zero inside the solver).
-  };
-
-  const startDrag = (e: React.MouseEvent, target: 'settings' | 'inspector') => {
-      e.stopPropagation(); // CRITICAL: Stop propagation to prevent 3D controls from interfering
-      // A docked settings panel has no stored position yet, so read it from the DOM
-      const docked = target === 'settings' && settingsPos.x < 0 && settingsRef.current;
-      const settingsStart = docked ? { x: settingsRef.current!.offsetLeft, y: settingsRef.current!.offsetTop } : settingsPos;
-      dragRef.current = {
-          target,
-          startX: e.clientX,
-          startY: e.clientY,
-          startPosX: target === 'settings' ? settingsStart.x : inspectorPos.x,
-          startPosY: target === 'settings' ? settingsStart.y : inspectorPos.y
-      };
-      setIsDraggingUI(true);
   };
 
   // Latest versions of the actions the keyboard shortcuts run
@@ -2171,426 +2436,444 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       record: () => { if (canRecord) toggleRecording(); },
       view: setCameraView,
       follow: toggleFollow,
+      arrange: toggleArrange,
       escape: () => {
-          if (rulerModeRef.current) setRuler(false);
+          if (arrangeRef.current) setArrangeMode(false);
+          else if (rulerModeRef.current) setRuler(false);
           else if (showCameraMenu) setShowCameraMenu(false);
           else selectObject(null);
       }
   };
 
-  // In realistic mode the controls fade out while the pointer rests
-  const fade = `transition-opacity duration-500 ${uiHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`;
-  const viewButton = "p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors";
-  const barButton = "shrink-0 p-2 rounded-full transition-colors";
-  const barIdle = "text-slate-400 hover:text-white hover:bg-white/10";
+  const barButton = "shrink-0 p-2 rounded-lg transition-colors";
+  const barIdle = "text-slate-400 hover:text-slate-100 hover:bg-white/[0.06]";
   const barOn = "text-sky-300 bg-sky-500/15";
   const divider = <div className="shrink-0 w-px h-6 bg-white/10 mx-0.5"></div>;
   const recordClock = `${Math.floor(recordSeconds / 60)}:${String(recordSeconds % 60).padStart(2, '0')}`;
 
+  // The side panel: reopening it redraws the readout into its fresh card
+  const toggleSidePanel = () => {
+      readoutDirtyRef.current = true;
+      setShowSettings(!showSettings);
+  };
+
+  const sliderClass = (thumb: string) => `w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:${thumb} [&::-webkit-slider-thumb]:rounded-full`;
+  const card = "w-full bg-slate-900/40 border border-white/[0.06] rounded-2xl";
+
+  // The stage: a toolbar above the view, the view itself with nothing drawn over it, a side panel beside
+  // it, and a status line under it. Every control lives around the simulation, never on top of it.
   return (
     <div
-        className={`w-full h-full relative overflow-hidden ${uiHidden ? 'cursor-none' : ''} ${rulerMode ? 'cursor-crosshair' : ''}`}
-        style={isFullscreen ? { backgroundColor: '#020617' } : undefined}
-        ref={containerRef}
+        ref={stageRef}
+        className="w-full h-full flex flex-col"
+        style={isFullscreen ? { backgroundColor: '#0e1517' } : undefined}
     >
-      {/* Control Bar */}
+      {/* Toolbar */}
       <div
-          className={`absolute top-3 left-1/2 -translate-x-1/2 max-w-[calc(100%-1.5rem)] overflow-x-auto flex items-center gap-0.5 p-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full shadow-xl z-10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${fade}`}
+          className={`shrink-0 h-12 flex items-center gap-1 px-2 border-b border-white/[0.06] bg-slate-950/25`}
           onMouseDown={(e) => e.stopPropagation()}
-          data-tour="toolbar"
       >
-         <button onClick={() => resetSimulation(true)} className={`${barButton} ${barIdle}`} title="Reset simulation ( R )" aria-label="Reset simulation">
-             <RotateCcw className="w-[18px] h-[18px]" />
-         </button>
-         <button onClick={togglePause} className={`${barButton} ${paused ? 'text-amber-400 bg-amber-500/10' : 'text-slate-200 hover:bg-white/10'}`} title={paused ? "Resume ( Space )" : "Pause ( Space )"} aria-label={paused ? "Resume" : "Pause"}>
-             {paused ? <Play className="w-[18px] h-[18px] fill-current" /> : <Pause className="w-[18px] h-[18px] fill-current" />}
-         </button>
-         <button onClick={() => spawnObject('box')} className={`${barButton} text-slate-400 hover:text-blue-400 hover:bg-white/10`} title="Add a box" aria-label="Add a box">
-             <Square className="w-[18px] h-[18px]" />
-         </button>
-         <button onClick={() => spawnObject('sphere')} className={`${barButton} text-slate-400 hover:text-blue-400 hover:bg-white/10`} title="Add a sphere" aria-label="Add a sphere">
-             <Circle className="w-[18px] h-[18px]" />
-         </button>
-         {divider}
-         {canRecord && (
+         {/* First, for quick access: AI edit and full screen (always visible, never scrolled away) */}
+         <div className="shrink-0 flex items-center gap-1">
+             {onOpenChat && (
+                 <button
+                     onClick={onOpenChat}
+                     className={`shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium transition-colors ${aiBusy ? 'text-amber-200 bg-amber-400/15' : aiOpen ? 'text-white bg-blue-600 hover:bg-blue-500' : 'text-blue-100 bg-blue-500/20 hover:bg-blue-500/30'}`}
+                     title={aiOpen ? "Close the AI edit bar" : "Change this scene with AI: add, remove or change anything"}
+                     aria-label={aiOpen ? "Close the AI edit bar" : "Open the AI edit bar"}
+                     aria-pressed={!!aiOpen}
+                 >
+                     {aiBusy ? <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/30 border-t-amber-200 rounded-full animate-spin"></span> : <Sparkles className="w-4 h-4" />}
+                     <span className="hidden sm:inline">{aiBusy ? 'AI is editing…' : 'AI edit'}</span>
+                 </button>
+             )}
+             {fullscreenSupported && (
+                 <button
+                     onClick={toggleFullscreen}
+                     className={`shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium transition-colors ${isFullscreen ? 'text-white bg-slate-600 hover:bg-slate-500' : 'text-slate-200 bg-white/[0.07] hover:bg-white/[0.12]'}`}
+                     title={isFullscreen ? "Exit full screen ( F or Esc )" : "Full screen ( F )"}
+                     aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
+                 >
+                     {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                     <span className="hidden sm:inline">{isFullscreen ? 'Exit full screen' : 'Full screen'}</span>
+                 </button>
+             )}
              <button
-                 onClick={toggleRecording}
-                 className={`${barButton} flex items-center gap-1.5 ${recording ? 'text-red-300 bg-red-500/20 pr-3' : barIdle}`}
-                 title={recording ? "Stop recording and save the video ( E )" : "Record a video of the simulation ( E )"}
-                 aria-label={recording ? "Stop recording" : "Record video"}
-                 aria-pressed={recording}
+                 onClick={() => setRealisticEnabled(!realisticEnabled)}
+                 className={`shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium transition-colors ${realisticEnabled ? 'text-slate-900 bg-amber-300 hover:bg-amber-200' : 'text-amber-200 bg-amber-400/10 hover:bg-amber-400/20'}`}
+                 title={realisticEnabled
+                     ? "Realistic is on: the scene is shown where it really happens. Click for the standard view."
+                     : "Realistic: show the scene where it really happens (a desk in a study, a living room, a park, a warehouse...) with the real surface and things around it"}
+                 aria-pressed={realisticEnabled}
+                 aria-label="Realistic view"
              >
-                 {recording
-                     ? <><span className="relative flex h-[18px] w-[18px] items-center justify-center"><span className="absolute h-3 w-3 rounded-full bg-red-500 animate-ping opacity-70"></span><span className="relative h-2.5 w-2.5 rounded-sm bg-red-500"></span></span><span className="text-[11px] font-mono tabular-nums">{recordClock}</span></>
-                     : <Video className="w-[18px] h-[18px]" />}
+                 <Aperture className="w-4 h-4" /> <span className="hidden sm:inline">Realistic</span>
              </button>
-         )}
-         <button onClick={takeScreenshot} className={`${barButton} ${barIdle}`} title="Save a screenshot ( P )" aria-label="Save a screenshot">
-             <Camera className="w-[18px] h-[18px]" />
-         </button>
-         {divider}
-         <button onClick={() => setRuler(!rulerMode)} className={`${barButton} ${rulerMode ? barOn : barIdle}`} title="Ruler: measure the distance between two points ( M )" aria-label="Ruler" aria-pressed={rulerMode}>
-             <Ruler className="w-[18px] h-[18px]" />
-         </button>
-         <button onClick={() => setShowStopwatch(!showStopwatch)} className={`${barButton} ${showStopwatch ? barOn : barIdle}`} title="Stopwatch" aria-label="Stopwatch" aria-pressed={showStopwatch}>
-             <Timer className="w-[18px] h-[18px]" />
-         </button>
-         <button onClick={toggleVectors} className={`${barButton} ${showVectors ? barOn : barIdle}`} title="Show velocity arrows ( V )" aria-label="Velocity arrows" aria-pressed={showVectors}>
-             <MoveUpRight className="w-[18px] h-[18px]" />
-         </button>
-         {sourceVideoUrl && (
-             <button onClick={() => setShowCompare(!showCompare)} className={`${barButton} ${showCompare ? barOn : barIdle}`} title="Compare with your video" aria-label="Compare with your video" aria-pressed={showCompare}>
-                 <PictureInPicture2 className="w-[18px] h-[18px]" />
+             {divider}
+         </div>
+         <div className="min-w-0 flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-tour="toolbar">
+             <button onClick={() => resetSimulation(true)} className={`${barButton} ${barIdle}`} title="Reset simulation ( R )" aria-label="Reset simulation">
+                 <RotateCcw className="w-[18px] h-[18px]" />
              </button>
-         )}
-         {divider}
-         <button onClick={handleSoundToggle} className={`${barButton} ${barIdle}`} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"}>
-             {muted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />}
-         </button>
-         <button onClick={() => setShowSettings(!showSettings)} className={`${barButton} ${showSettings ? 'text-blue-400 bg-blue-500/10' : barIdle}`} title="Settings" aria-label="Settings" aria-pressed={showSettings}>
-             <Settings2 className="w-[18px] h-[18px]" />
-         </button>
-         {onOpenHelp && (
-             <button onClick={onOpenHelp} className={`${barButton} ${barIdle}`} title="Keyboard shortcuts and help ( ? )" aria-label="Help">
-                 <HelpCircle className="w-[18px] h-[18px]" />
+             <button onClick={togglePause} className={`${barButton} ${paused ? 'text-amber-300 bg-amber-500/10' : 'text-slate-200 hover:bg-white/[0.06]'}`} title={paused ? "Resume ( Space )" : "Pause ( Space )"} aria-label={paused ? "Resume" : "Pause"}>
+                 {paused ? <Play className="w-[18px] h-[18px] fill-current" /> : <Pause className="w-[18px] h-[18px] fill-current" />}
              </button>
-         )}
-      </div>
+             <button
+                 onClick={toggleArrange}
+                 className={`${barButton} flex items-center gap-1.5 ${arranging ? 'text-amber-200 bg-amber-400/15 pr-3' : barIdle}`}
+                 title={arranging ? "Done arranging: let time run again ( A )" : "Arrange: freeze time and place objects by hand ( A )"}
+                 aria-label={arranging ? "Done arranging" : "Arrange objects by hand"}
+                 aria-pressed={arranging}
+             >
+                 <Hand className="w-[18px] h-[18px]" />
+                 {arranging && <span className="text-[12px] font-medium">Arranging</span>}
+             </button>
+             <button onClick={() => spawnObject('box')} className={`${barButton} ${barIdle}`} title="Add a box" aria-label="Add a box">
+                 <Square className="w-[18px] h-[18px]" />
+             </button>
+             <button onClick={() => spawnObject('sphere')} className={`${barButton} ${barIdle}`} title="Add a sphere" aria-label="Add a sphere">
+                 <Circle className="w-[18px] h-[18px]" />
+             </button>
+             {divider}
+             {canRecord && (
+                 <button
+                     onClick={toggleRecording}
+                     className={`${barButton} flex items-center gap-1.5 ${recording ? 'text-red-300 bg-red-500/15 pr-3' : barIdle}`}
+                     title={recording ? "Stop recording and save the video ( E )" : "Record a video of the simulation ( E )"}
+                     aria-label={recording ? "Stop recording" : "Record video"}
+                     aria-pressed={recording}
+                 >
+                     {recording
+                         ? <><span className="relative flex h-[18px] w-[18px] items-center justify-center"><span className="relative h-2.5 w-2.5 rounded-xs bg-red-400 animate-pulse"></span></span><span className="text-[12px] tabular-nums">{recordClock}</span></>
+                         : <Video className="w-[18px] h-[18px]" />}
+                 </button>
+             )}
+             <button onClick={takeScreenshot} className={`${barButton} ${barIdle}`} title="Save a screenshot ( P )" aria-label="Save a screenshot">
+                 <Camera className="w-[18px] h-[18px]" />
+             </button>
+             {divider}
+             <button onClick={() => setRuler(!rulerMode)} className={`${barButton} ${rulerMode ? barOn : barIdle}`} title="Ruler: measure the distance between two points ( M )" aria-label="Ruler" aria-pressed={rulerMode}>
+                 <Ruler className="w-[18px] h-[18px]" />
+             </button>
+             <button onClick={() => { if (!showStopwatch && !showSettings) toggleSidePanel(); setShowStopwatch(!showStopwatch); }} className={`${barButton} ${showStopwatch ? barOn : barIdle}`} title="Stopwatch (opens in the side panel)" aria-label="Stopwatch" aria-pressed={showStopwatch}>
+                 <Timer className="w-[18px] h-[18px]" />
+             </button>
+             <button onClick={toggleVectors} className={`${barButton} ${showVectors ? barOn : barIdle}`} title="Show velocity arrows ( V )" aria-label="Velocity arrows" aria-pressed={showVectors}>
+                 <MoveUpRight className="w-[18px] h-[18px]" />
+             </button>
+             {sourceVideoUrl && (
+                 <button onClick={() => { if (!showCompare && !showSettings) toggleSidePanel(); setShowCompare(!showCompare); }} className={`${barButton} ${showCompare ? barOn : barIdle}`} title="Compare with your video (opens in the side panel)" aria-label="Compare with your video" aria-pressed={showCompare}>
+                     <PictureInPicture2 className="w-[18px] h-[18px]" />
+                 </button>
+             )}
+             {divider}
+             <button onClick={handleSoundToggle} className={`${barButton} ${barIdle}`} title={muted ? "Unmute" : "Mute"} aria-label={muted ? "Unmute" : "Mute"}>
+                 {muted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />}
+             </button>
+         </div>
 
-      {/* Bottom row: view controls (kept clear of the chat button on the right) */}
-      <div className={`absolute bottom-3 left-3 flex flex-wrap-reverse items-end gap-2 z-10 pointer-events-none ${isFullscreen ? 'right-3' : 'right-3 sm:right-[84px]'} ${fade}`}>
-          <div className="relative pointer-events-auto" onMouseDown={(e) => e.stopPropagation()}>
-              {showCameraMenu && (
-                  <div className="absolute bottom-full left-0 mb-2 w-44 p-1.5 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Camera</div>
-                      {([['home', 'Scene view', '1'], ['top', 'Top', '2'], ['front', 'Front', '3'], ['side', 'Side', '4']] as [CameraView, string, string][]).map(([view, name, key]) => (
-                          <button key={view} onClick={() => setCameraView(view)} className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs text-slate-200 hover:bg-white/10">
-                              <span>{name}</span><kbd className="text-[10px] font-mono text-slate-500">{key}</kbd>
-                          </button>
-                      ))}
-                      <button onClick={toggleFollow} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs ${follow ? 'text-sky-300 bg-sky-500/15' : 'text-slate-200 hover:bg-white/10'}`} aria-pressed={follow}>
-                          <span className="flex items-center gap-1.5"><Crosshair className="w-3.5 h-3.5" /> Follow object</span><kbd className="text-[10px] font-mono text-slate-500">0</kbd>
-                      </button>
-                      <p className="px-2 pt-1 text-[10px] leading-snug text-slate-500">Follow tracks the selected object, or the main one.</p>
-                  </div>
-              )}
-              <div className="flex items-center gap-1 p-1 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-full shadow-xl">
-                 <button onClick={() => zoomBy(1 / ZOOM_STEP)} className={viewButton} title="Zoom out ( - )" aria-label="Zoom out">
-                     <ZoomOut className="w-5 h-5" />
+         <div className="flex-1"></div>
+
+         <div className="shrink-0 flex items-center gap-0.5">
+             <button onClick={() => zoomBy(1 / ZOOM_STEP)} className={`${barButton} ${barIdle}`} title="Zoom out ( - )" aria-label="Zoom out">
+                 <ZoomOut className="w-[18px] h-[18px]" />
+             </button>
+             <button onClick={() => zoomBy(ZOOM_STEP)} className={`${barButton} ${barIdle}`} title="Zoom in ( + )" aria-label="Zoom in">
+                 <ZoomIn className="w-[18px] h-[18px]" />
+             </button>
+             <button onClick={resetView} className={`${barButton} ${barIdle}`} title="Reset view ( 1 )" aria-label="Reset view">
+                 <LocateFixed className="w-[18px] h-[18px]" />
+             </button>
+             <div className="relative">
+                 <button onClick={() => setShowCameraMenu(!showCameraMenu)} className={`${barButton} ${showCameraMenu || follow ? barOn : barIdle}`} title="Camera views" aria-label="Camera views" aria-expanded={showCameraMenu}>
+                     <Eye className="w-[18px] h-[18px]" />
                  </button>
-                 <button onClick={() => zoomBy(ZOOM_STEP)} className={viewButton} title="Zoom in ( + )" aria-label="Zoom in">
-                     <ZoomIn className="w-5 h-5" />
-                 </button>
-                 <button onClick={resetView} className={viewButton} title="Reset view ( 1 )" aria-label="Reset view">
-                     <LocateFixed className="w-5 h-5" />
-                 </button>
-                 <button onClick={() => setShowCameraMenu(!showCameraMenu)} className={`${viewButton} ${showCameraMenu || follow ? '!text-sky-300 bg-sky-500/15' : ''}`} title="Camera views" aria-label="Camera views" aria-expanded={showCameraMenu}>
-                     <Eye className="w-5 h-5" />
-                 </button>
-                 {fullscreenSupported && (
-                     <>
-                         <div className="w-px h-6 bg-white/10 mx-0.5"></div>
-                         <button onClick={toggleFullscreen} className={viewButton} title={isFullscreen ? "Exit full screen ( F or Esc )" : "Full screen ( F )"} aria-label={isFullscreen ? "Exit full screen" : "Full screen"}>
-                             {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+                 {showCameraMenu && (
+                     <div className="absolute top-full right-0 mt-2 z-30 w-48 p-1.5 bg-slate-900/95 backdrop-blur-xl border border-white/[0.08] rounded-xl shadow-calm">
+                         <div className="px-2 py-1 text-[12px] font-medium text-slate-400">Camera</div>
+                         {([['home', 'Scene view', '1'], ['top', 'Top', '2'], ['front', 'Front', '3'], ['side', 'Side', '4']] as [CameraView, string, string][]).map(([view, name, key]) => (
+                             <button key={view} onClick={() => { setCameraView(view); setShowCameraMenu(false); }} className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs text-slate-200 hover:bg-white/[0.06]">
+                                 <span>{name}</span><kbd className="text-[10px] font-mono text-slate-500">{key}</kbd>
+                             </button>
+                         ))}
+                         <button onClick={toggleFollow} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs ${follow ? 'text-sky-300 bg-sky-500/15' : 'text-slate-200 hover:bg-white/[0.06]'}`} aria-pressed={follow}>
+                             <span className="flex items-center gap-1.5"><Crosshair className="w-3.5 h-3.5" /> Follow object</span><kbd className="text-[10px] font-mono text-slate-500">0</kbd>
                          </button>
-                     </>
+                         <p className="px-2 pt-1 text-[11px] leading-snug text-slate-500">Follow tracks the selected object, or the main one.</p>
+                     </div>
                  )}
-                 {isFullscreen && (
-                     <button
-                         onClick={() => setCinematicEnabled(!cinematicEnabled)}
-                         className={`flex items-center gap-1.5 pl-2.5 pr-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider transition-colors ${cinematicEnabled ? 'text-amber-300 bg-amber-500/15' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
-                         title="Realistic mode: natural lighting, reflections and smooth edges, with the camera drifting slowly around the scene"
-                         aria-pressed={cinematicEnabled}
-                     >
-                         <Aperture className="w-4 h-4" /> Realistic
-                     </button>
-                 )}
-              </div>
-          </div>
+             </div>
+             {divider}
+             {onOpenHelp && (
+                 <button onClick={onOpenHelp} className={`${barButton} ${barIdle}`} title="Keyboard shortcuts and help ( ? )" aria-label="Help">
+                     <HelpCircle className="w-[18px] h-[18px]" />
+                 </button>
+             )}
+             <button onClick={toggleSidePanel} className={`${barButton} ${showSettings ? barOn : barIdle}`} title={showSettings ? "Hide the side panel" : "Show the readout and settings"} aria-label={showSettings ? "Hide the side panel" : "Show the side panel"} aria-pressed={showSettings}>
+                 {showSettings ? <PanelRightClose className="w-[18px] h-[18px]" /> : <PanelRightOpen className="w-[18px] h-[18px]" />}
+             </button>
+         </div>
       </div>
 
-      {/* The scene's live readout (filled in by the effect above, hidden until the scene reports something).
-          It gives way to the object inspector, which opens in the same corner. */}
-      <div
-          ref={readoutPanelRef}
-          className={`absolute left-3 top-[64px] z-10 w-[min(264px,calc(100%-1.5rem))] px-3 py-2.5 bg-slate-900/85 backdrop-blur-md border border-white/10 rounded-xl shadow-xl text-[11px] pointer-events-none ${selectedLabel ? 'hidden' : ''} ${fade}`}
-          style={{ display: 'none' }}
-          role="status"
-          aria-live="off"
-      ></div>
-
-      {/* Ruler: read-out placed over the measured line by the render loop, and a hint while measuring */}
-      <div ref={rulerLabelRef} className="absolute top-0 left-0 z-10 pointer-events-none px-2 py-1 rounded-md bg-yellow-300 text-slate-900 text-xs font-bold font-mono shadow-lg whitespace-nowrap" style={{ visibility: 'hidden' }}>
-          {rulerInfo.distance.toFixed(2)} m
-      </div>
-      {rulerMode && (
-          <div className={`absolute top-[60px] left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-1.5rem)] flex items-center gap-3 px-3 py-1.5 rounded-full bg-slate-900/90 backdrop-blur-md border border-yellow-300/40 shadow-xl text-[11px] text-slate-200 ${fade}`} role="status" onMouseDown={(e) => e.stopPropagation()}>
-              <Ruler className="w-3.5 h-3.5 shrink-0 text-yellow-300" />
-              {rulerInfo.points === 2 ? (
-                  <span className="font-mono whitespace-nowrap">
-                      <span className="text-yellow-300 font-bold">{rulerInfo.distance.toFixed(2)} m</span>
-                      <span className="text-slate-400"> · across {Math.hypot(rulerInfo.dx, rulerInfo.dz).toFixed(2)} · up {rulerInfo.dy.toFixed(2)}</span>
-                  </span>
-              ) : (
-                  <span className="whitespace-nowrap">{rulerInfo.points === 0 ? 'Click the first point' : 'Click the second point'}</span>
-              )}
-              <button onClick={() => setRuler(false)} className="shrink-0 px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-[10px] font-semibold">Done</button>
-          </div>
-      )}
-
-      {/* Click-to-start prompt (lets clicks through to the canvas) */}
-      {awaitingStart && (
-        <div className="absolute inset-x-0 bottom-[72px] flex justify-center px-4 pointer-events-none z-10" role="status" aria-live="polite">
-          <div className="flex items-center gap-3 pl-4 pr-5 py-2.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-blue-400/40 shadow-2xl">
-            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-blue-500/40 animate-ping"></span>
-              <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white">
-                <MousePointerClick className="w-4 h-4" />
-              </span>
-            </span>
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold text-slate-100">{rulerMode ? 'Finish measuring, then click to start' : (simulationData.startHint || 'Click anywhere to start')}</span>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Ready · drag to look around first</span>
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Short confirmations (saved a file, and so on) */}
-      {toast && (
-          <div className="absolute inset-x-0 bottom-[72px] flex justify-center px-4 pointer-events-none z-30" role="status" aria-live="polite">
-              <div className="px-4 py-2 rounded-full bg-slate-800/95 border border-white/15 shadow-2xl text-xs text-slate-100">{toast}</div>
-          </div>
-      )}
-
-      {showStopwatch && (
-          <Stopwatch api={simApi} onClose={() => setShowStopwatch(false)} className={`left-1/2 -translate-x-1/2 ${rulerMode ? 'top-[104px]' : 'top-[60px]'} ${fade}`} />
-      )}
-
-      {sourceVideoUrl && showCompare && (
-          <ComparePanel url={sourceVideoUrl} api={simApi} onClose={() => setShowCompare(false)} className={`left-3 bottom-[68px] ${fade}`} />
-      )}
-
-      {/* Settings Panel */}
-      {showSettings && (
+      {/* The view, with nothing over it, and the side panel beside it */}
+      <div className="flex-1 min-h-0 flex">
         <div
-            className={`absolute bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl flex flex-col overflow-hidden z-20 ${fade}`}
-            style={{
-                ...(settingsPos.x < 0 ? { right: 12, top: 60 } : { left: settingsPos.x, top: settingsPos.y }),
-                width: settingsSize.w,
-                maxHeight: `min(${settingsSize.h}px, calc(100% - 140px))`
-            }}
-            ref={settingsRef}
-            onMouseDown={(e) => e.stopPropagation()} // Stop propagation on the panel itself
+            ref={containerRef}
+            className={`relative flex-1 min-w-0 overflow-hidden ${rulerMode ? 'cursor-crosshair' : ''} ${arranging ? 'cursor-grab active:cursor-grabbing' : ''}`}
         >
-           <div className="h-8 shrink-0 bg-white/5 border-b border-white/5 flex items-center justify-between px-2.5 cursor-move select-none"
-                onMouseDown={(e) => startDrag(e, 'settings')}
-           >
-                <div className="flex items-center gap-1.5 text-slate-300 text-[10px] font-bold uppercase tracking-wider">
-                    <Sliders className="w-3 h-3" /> Settings
-                </div>
-                <div className="flex items-center gap-1">
-                    <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={() => setIsSettingsMinimized(!isSettingsMinimized)}
-                        className="p-1 hover:bg-white/10 rounded text-slate-400"
-                        aria-label={isSettingsMinimized ? "Expand settings" : "Collapse settings"}
-                    >
-                        {isSettingsMinimized ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-                    </button>
-                    <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={() => setShowSettings(false)}
-                        className="p-1 hover:bg-red-500/20 hover:text-red-400 rounded text-slate-400"
-                        aria-label="Close settings"
-                    >
-                        <X className="w-3 h-3" />
-                    </button>
-                </div>
-           </div>
-
-           {!isSettingsMinimized && (
-               <div className="flex-1 flex flex-col min-h-0">
-                    <div className="flex shrink-0 p-1.5 gap-1 bg-black/20">
-                        <button
-                            onClick={() => setSettingsTab('physics')}
-                            className={`flex-1 py-1 px-1.5 rounded-md text-[10px] font-medium transition-colors flex items-center justify-center gap-1 ${settingsTab === 'physics' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <MoveDiagonal className="w-3 h-3" /> Physics
-                        </button>
-                        <button
-                            onClick={() => setSettingsTab('environment')}
-                            className={`flex-1 py-1 px-1.5 rounded-md text-[10px] font-medium transition-colors flex items-center justify-center gap-1 ${settingsTab === 'environment' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            <Sun className="w-3 h-3" /> Scene
-                        </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 custom-scrollbar">
-                        {settingsTab === 'physics' ? (
-                            <>
-                                {/* Speed: built in for every simulation */}
-                                <div className="space-y-1.5 pb-2.5 border-b border-white/5">
-                                    <div className="flex justify-between gap-2 text-[11px] leading-tight text-slate-200">
-                                        <span className="flex items-center gap-1 font-semibold"><Gauge className="w-3 h-3 text-emerald-400" /> Speed</span>
-                                        <span className="font-mono text-emerald-300">{speed.toFixed(2)}×</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        aria-label="Simulation speed"
-                                        min={SPEED_MIN} max={SPEED_MAX} step={0.05}
-                                        value={speed}
-                                        onChange={(e) => changeSpeed(parseFloat(e.target.value))}
-                                        className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:bg-emerald-400"
-                                    />
-                                    <div className="flex gap-1">
-                                        {SPEED_PRESETS.map(preset => (
-                                            <button
-                                                key={preset}
-                                                onClick={() => changeSpeed(preset)}
-                                                className={`flex-1 py-0.5 rounded text-[10px] font-mono transition-colors ${Math.abs(speed - preset) < 0.001 ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40' : 'bg-slate-800 text-slate-400 border border-transparent hover:text-slate-200'}`}
-                                            >
-                                                {preset}×
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* A simulation's own 'scale' slider is replaced by the Speed control above */}
-                                {simulationData.sliders.filter(s => s.property !== 'scale').map((s, i) => (
-                                    <div key={i} className="space-y-1">
-                                        <div className="flex justify-between gap-2 text-[11px] leading-tight text-slate-300">
-                                            <span>{s.label}</span>
-                                            <span className="font-mono opacity-50">{sliderValues[s.label]?.toFixed(2)}</span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            aria-label={s.label}
-                                            min={s.min} max={s.max} step={s.step || 0.1}
-                                            value={sliderValues[s.label] ?? s.value}
-                                            onChange={(e) => handleSliderChange(s.label, parseFloat(e.target.value))}
-                                            className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:bg-blue-400"
-                                        />
-                                    </div>
-                                ))}
-                            </>
-                        ) : (
-                            <div className="space-y-2.5">
-                                {/* Environment theme: backdrop and lighting only; the scene's objects stay as they are */}
-                                <div className="space-y-1.5 pb-2.5 border-b border-white/5">
-                                    <div className="text-[11px] leading-tight text-slate-200 font-semibold">Environment</div>
-                                    <div className="grid grid-cols-5 gap-1">
-                                        {THEMES.map(t => (
-                                            <button
-                                                key={t.id}
-                                                onClick={() => changeTheme(t.id)}
-                                                title={t.id === 'original' ? "The scene's own look" : `${t.label} backdrop and lighting`}
-                                                aria-label={`${t.label} environment`}
-                                                aria-pressed={theme === t.id}
-                                                className={`h-7 rounded-md border transition-transform ${theme === t.id ? 'border-sky-300 ring-1 ring-sky-300 scale-105' : 'border-white/15 hover:border-white/40'}`}
-                                                style={{ background: t.swatch }}
-                                            ></button>
-                                        ))}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400">{THEMES.find(t => t.id === theme)?.label}</div>
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex justify-between gap-2 text-[11px] leading-tight text-slate-300">
-                                        <span className="flex items-center gap-1"><Volume2 className="w-3 h-3" /> Sound Volume</span>
-                                        <span className="font-mono opacity-50">{muted ? 'muted' : `${Math.round(volume * 100)}%`}</span>
-                                    </div>
-                                    <input
-                                        type="range" min="0" max="1" step="0.05"
-                                        aria-label="Sound volume"
-                                        value={volume}
-                                        onChange={(e) => { simAudio.unlock(); setVolume(parseFloat(e.target.value)); if (muted) setMuted(false); }}
-                                        className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:rounded-full"
-                                    />
-                                </div>
-                                <label className="flex items-center justify-between gap-2 text-[11px] leading-tight text-slate-300 cursor-pointer" title="Camera shake on heavy impacts, plus device vibration on phones that support it">
-                                    <span className="flex items-center gap-1"><Vibrate className="w-3 h-3" /> Vibration</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={vibration}
-                                        onChange={(e) => setVibration(e.target.checked)}
-                                        className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
-                                    />
-                                </label>
-                                <div className="space-y-1">
-                                    <div className="text-[11px] leading-tight text-slate-300">Background Color</div>
-                                    <input
-                                        type="color"
-                                        aria-label="Background colour"
-                                        value={bgColor}
-                                        onChange={(e) => changeBackground(e.target.value)}
-                                        className="w-full h-6 rounded cursor-pointer bg-transparent"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="text-[11px] leading-tight text-slate-300">Light Intensity</div>
-                                    <input
-                                        type="range" min="0" max="5" step="0.1"
-                                        aria-label="Light intensity"
-                                        value={lightSettings.intensity}
-                                        onChange={(e) => updateLighting({ ...lightSettings, intensity: parseFloat(e.target.value) })}
-                                        className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:rounded-full"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="text-[11px] leading-tight text-slate-300">Sun Position (Azimuth)</div>
-                                    <input
-                                        type="range" min="0" max="360"
-                                        aria-label="Sun position"
-                                        value={lightSettings.azimuth}
-                                        onChange={(e) => updateLighting({ ...lightSettings, azimuth: parseFloat(e.target.value) })}
-                                        className="w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:rounded-full"
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-               </div>
-           )}
+          {/* Arranging: a soft frame around the view (drawn on its edge, never over the scene) */}
+          {arranging && <div className="absolute inset-0 z-10 pointer-events-none rounded-xs ring-2 ring-inset ring-amber-300/50"></div>}
+          {/* Ruler: the distance, placed on the measured line by the render loop (it belongs to the line) */}
+          <div ref={rulerLabelRef} className="absolute top-0 left-0 z-10 pointer-events-none px-2 py-1 rounded-md bg-yellow-300 text-slate-900 text-xs font-bold font-mono shadow-lg whitespace-nowrap" style={{ visibility: 'hidden' }}>
+              {rulerInfo.distance.toFixed(2)} m
+          </div>
         </div>
-      )}
 
-      {/* Object Inspector: live data and editing for the selected object */}
-      {selectedLabel && editInfo && (
-          <ObjectInspector
-              label={selectedLabel}
-              api={simApi}
-              info={editInfo}
-              panelRef={inspectorRef}
-              style={{ left: inspectorPos.x, top: inspectorPos.y, width: 236, maxHeight: 'min(440px, calc(100% - 140px))' }}
-              onHeaderMouseDown={(e) => startDrag(e, 'inspector')}
-              onClose={() => selectObject(null)}
-              onMass={updateSelectedMass}
-              onScale={updateSelectedScale}
-              onRotate={updateSelectedRotation}
-              onColor={updateSelectedColor}
-              onSound={updateSelectedSound}
-              onBounce={updateSelectedBounce}
-              onDuplicate={duplicateSelected}
-              onDelete={deleteSelected}
-          />
-      )}
+        {showSettings && (
+          <aside
+              className={`w-[min(300px,45%)] shrink-0 border-l border-white/[0.06] bg-slate-950/20 overflow-y-auto p-3 space-y-3`}
+              onMouseDown={(e) => e.stopPropagation()}
+              aria-label="Readout and settings"
+          >
+              {/* The scene's live readout (filled in by the effect above; hidden until the scene reports something) */}
+              <div
+                  ref={readoutPanelRef}
+                  className={`${card} px-3.5 py-3 text-[12px]`}
+                  style={{ display: 'none' }}
+                  role="status"
+                  aria-live="off"
+              ></div>
 
-      {/* Global Drag Handler */}
-      {isDraggingUI && (
-         <div className="fixed inset-0 z-[100] cursor-move"
-              onMouseMove={(e) => {
-                  const dx = e.clientX - dragRef.current.startX;
-                  const dy = e.clientY - dragRef.current.startY;
-                  if (dragRef.current.target === 'settings') {
-                      setSettingsPos({ x: dragRef.current.startPosX + dx, y: dragRef.current.startPosY + dy });
-                  } else {
-                      setInspectorPos({ x: dragRef.current.startPosX + dx, y: dragRef.current.startPosY + dy });
-                  }
-              }}
-              onMouseUp={() => setIsDraggingUI(false)}
-              onMouseLeave={() => setIsDraggingUI(false)}
-         />
-      )}
+              {/* Object Inspector: live data and editing for the selected object */}
+              {selectedLabel && editInfo && (
+                  <ObjectInspector
+                      label={selectedLabel}
+                      api={simApi}
+                      info={editInfo}
+                      panelRef={inspectorRef}
+                      onClose={() => selectObject(null)}
+                      onMass={updateSelectedMass}
+                      onScale={updateSelectedScale}
+                      onRotate={updateSelectedRotation}
+                      onColor={updateSelectedColor}
+                      onSound={updateSelectedSound}
+                      onBounce={updateSelectedBounce}
+                      onDuplicate={duplicateSelected}
+                      onDelete={deleteSelected}
+                  />
+              )}
+
+              {showStopwatch && <Stopwatch api={simApi} onClose={() => setShowStopwatch(false)} />}
+
+              {sourceVideoUrl && showCompare && (
+                  <ComparePanel url={sourceVideoUrl} api={simApi} onClose={() => setShowCompare(false)} />
+              )}
+
+              {/* Settings */}
+              <div className={`${card} flex flex-col overflow-hidden`}>
+                  <div className="h-9 shrink-0 border-b border-white/[0.05] flex items-center px-3 select-none">
+                      <div className="flex items-center gap-1.5 text-slate-300 text-[12px] font-medium">
+                          <Sliders className="w-3.5 h-3.5 text-blue-300" /> Settings
+                      </div>
+                  </div>
+                  <div className="flex shrink-0 p-1.5 gap-1 bg-black/20">
+                      <button
+                          onClick={() => setSettingsTab('physics')}
+                          className={`flex-1 py-1 px-1.5 rounded-md text-[11px] font-medium transition-colors flex items-center justify-center gap-1 ${settingsTab === 'physics' ? 'bg-slate-700/80 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                      >
+                          <MoveDiagonal className="w-3 h-3" /> Physics
+                      </button>
+                      <button
+                          onClick={() => setSettingsTab('environment')}
+                          className={`flex-1 py-1 px-1.5 rounded-md text-[11px] font-medium transition-colors flex items-center justify-center gap-1 ${settingsTab === 'environment' ? 'bg-slate-700/80 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                      >
+                          <Sun className="w-3 h-3" /> Scene
+                      </button>
+                  </div>
+
+                  <div className="p-3 space-y-3">
+                      {settingsTab === 'physics' ? (
+                          <>
+                              {/* Speed: built in for every simulation */}
+                              <div className="space-y-1.5 pb-3 border-b border-white/5">
+                                  <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-200">
+                                      <span className="flex items-center gap-1 font-medium"><Gauge className="w-3.5 h-3.5 text-emerald-400" /> Speed</span>
+                                      <span className="font-mono tabular-nums text-emerald-300">{speed.toFixed(2)}×</span>
+                                  </div>
+                                  <input
+                                      type="range"
+                                      aria-label="Simulation speed"
+                                      min={SPEED_MIN} max={SPEED_MAX} step={0.05}
+                                      value={speed}
+                                      onChange={(e) => changeSpeed(parseFloat(e.target.value))}
+                                      className={sliderClass('bg-emerald-400')}
+                                  />
+                                  <div className="flex gap-1">
+                                      {SPEED_PRESETS.map(preset => (
+                                          <button
+                                              key={preset}
+                                              onClick={() => changeSpeed(preset)}
+                                              className={`flex-1 py-0.5 rounded-sm text-[11px] font-mono transition-colors ${Math.abs(speed - preset) < 0.001 ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40' : 'bg-slate-800 text-slate-400 border border-transparent hover:text-slate-200'}`}
+                                          >
+                                              {preset}×
+                                          </button>
+                                      ))}
+                                  </div>
+                              </div>
+
+                              {/* A simulation's own 'scale' slider is replaced by the Speed control above */}
+                              {simulationData.sliders.filter(s => s.property !== 'scale').map((s, i) => (
+                                  <div key={i} className="space-y-1.5">
+                                      <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
+                                          <span>{s.label}</span>
+                                          <span className="font-mono tabular-nums text-slate-400">{sliderValues[s.label]?.toFixed(2)}</span>
+                                      </div>
+                                      <input
+                                          type="range"
+                                          aria-label={s.label}
+                                          min={s.min} max={s.max} step={s.step || 0.1}
+                                          value={sliderValues[s.label] ?? s.value}
+                                          onChange={(e) => handleSliderChange(s.label, parseFloat(e.target.value))}
+                                          className={sliderClass('bg-blue-400')}
+                                      />
+                                  </div>
+                              ))}
+                          </>
+                      ) : (
+                          <>
+                              {/* Environment theme: backdrop and lighting only; the scene's objects stay as they are */}
+                              <div className="space-y-1.5 pb-3 border-b border-white/5">
+                                  <div className="text-[12px] leading-tight text-slate-200 font-medium">Environment</div>
+                                  <div className="grid grid-cols-5 gap-1">
+                                      {THEMES.map(t => (
+                                          <button
+                                              key={t.id}
+                                              onClick={() => changeTheme(t.id)}
+                                              title={t.id === 'original' ? "The scene's own look" : `${t.label} backdrop and lighting`}
+                                              aria-label={`${t.label} environment`}
+                                              aria-pressed={theme === t.id}
+                                              className={`h-7 rounded-md border transition-transform ${theme === t.id ? 'border-sky-300 ring-1 ring-sky-300 scale-105' : 'border-white/15 hover:border-white/40'}`}
+                                              style={{ background: t.swatch }}
+                                          ></button>
+                                      ))}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400">{THEMES.find(t => t.id === theme)?.label}</div>
+                              </div>
+                              <div className="space-y-1.5">
+                                  <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
+                                      <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Sound volume</span>
+                                      <span className="font-mono text-slate-400">{muted ? 'muted' : `${Math.round(volume * 100)}%`}</span>
+                                  </div>
+                                  <input
+                                      type="range" min="0" max="1" step="0.05"
+                                      aria-label="Sound volume"
+                                      value={volume}
+                                      onChange={(e) => { simAudio.unlock(); setVolume(parseFloat(e.target.value)); if (muted) setMuted(false); }}
+                                      className={sliderClass('bg-amber-400')}
+                                  />
+                              </div>
+                              <label className="flex items-center justify-between gap-2 text-[12px] leading-tight text-slate-300 cursor-pointer" title="Camera shake on heavy impacts, plus device vibration on phones that support it">
+                                  <span className="flex items-center gap-1"><Vibrate className="w-3.5 h-3.5" /> Vibration</span>
+                                  <input
+                                      type="checkbox"
+                                      checked={vibration}
+                                      onChange={(e) => setVibration(e.target.checked)}
+                                      className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                                  />
+                              </label>
+                              <div className="space-y-1.5">
+                                  <div className="text-[12px] leading-tight text-slate-300">Background colour</div>
+                                  <input
+                                      type="color"
+                                      aria-label="Background colour"
+                                      value={bgColor}
+                                      onChange={(e) => changeBackground(e.target.value)}
+                                      className="w-full h-7 rounded-sm cursor-pointer bg-transparent"
+                                  />
+                              </div>
+                              <div className="space-y-1.5">
+                                  <div className="text-[12px] leading-tight text-slate-300">Light intensity</div>
+                                  <input
+                                      type="range" min="0" max="5" step="0.1"
+                                      aria-label="Light intensity"
+                                      value={lightSettings.intensity}
+                                      onChange={(e) => updateLighting({ ...lightSettings, intensity: parseFloat(e.target.value) })}
+                                      className={sliderClass('bg-amber-400')}
+                                  />
+                              </div>
+                              <div className="space-y-1.5">
+                                  <div className="text-[12px] leading-tight text-slate-300">Sun position (azimuth)</div>
+                                  <input
+                                      type="range" min="0" max="360"
+                                      aria-label="Sun position"
+                                      value={lightSettings.azimuth}
+                                      onChange={(e) => updateLighting({ ...lightSettings, azimuth: parseFloat(e.target.value) })}
+                                      className={sliderClass('bg-amber-400')}
+                                  />
+                              </div>
+                          </>
+                      )}
+                  </div>
+              </div>
+          </aside>
+        )}
+      </div>
+
+      {/* Status line under the view: the start prompt, measuring hints and short confirmations */}
+      <div
+          className={`shrink-0 min-h-[40px] flex items-center gap-3 px-3 py-1.5 border-t border-white/[0.06] bg-slate-950/25 text-[12px]`}
+          role="status"
+          aria-live="polite"
+          onMouseDown={(e) => e.stopPropagation()}
+      >
+          {arranging ? (
+              <span className="min-w-0 flex items-center gap-2.5">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-amber-200">
+                      <Hand className="w-3.5 h-3.5" />
+                  </span>
+                  <span className="truncate">
+                      <span className="font-medium text-amber-100">Arrange mode: time is frozen</span>
+                      <span className="text-slate-400"> · Drag any object to place it; it stays where you let go. Press Play or Space to run from here.</span>
+                  </span>
+              </span>
+          ) : awaitingStart ? (
+              <span className="min-w-0 flex items-center gap-2.5">
+                  <span className="relative flex h-6 w-6 shrink-0 items-center justify-center">
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400/25 animate-[breathe_4s_ease-in-out_infinite]"></span>
+                      <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white">
+                          <MousePointerClick className="w-3.5 h-3.5" />
+                      </span>
+                  </span>
+                  <span className="truncate">
+                      <span className="font-medium text-slate-50">{rulerMode ? 'Finish measuring, then click the view to start' : (simulationData.startHint || 'Click anywhere to start')}</span>
+                      <span className="text-slate-400"> · No rush: drag to look around first</span>
+                  </span>
+              </span>
+          ) : rulerMode ? (
+              <span className="min-w-0 flex items-center gap-2.5">
+                  <Ruler className="w-3.5 h-3.5 shrink-0 text-yellow-300" />
+                  {rulerInfo.points === 2 ? (
+                      <span className="font-mono truncate">
+                          <span className="text-yellow-300 font-bold">{rulerInfo.distance.toFixed(2)} m</span>
+                          <span className="text-slate-400"> · across {Math.hypot(rulerInfo.dx, rulerInfo.dz).toFixed(2)} · up {rulerInfo.dy.toFixed(2)}</span>
+                      </span>
+                  ) : (
+                      <span className="text-slate-300 truncate">{rulerInfo.points === 0 ? 'Click the first point' : 'Click the second point'}</span>
+                  )}
+                  <button onClick={() => setRuler(false)} className="shrink-0 px-2.5 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-[11px] font-medium">Done</button>
+              </span>
+          ) : (
+              <span className="min-w-0 truncate text-slate-500">Drag to look around · scroll to zoom · click an object to see its data</span>
+          )}
+          {toast && (
+              <span className="ml-auto shrink-0 flex items-center gap-1.5 text-slate-100">
+                  <Check className="w-3.5 h-3.5 text-blue-300" /> {toast}
+              </span>
+          )}
+      </div>
+
+      {/* The "Change with AI" bar (from the app) */}
+      {footer}
     </div>
   );
 };

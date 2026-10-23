@@ -55,14 +55,14 @@ export const Stopwatch: React.FC<StopwatchProps> = ({ api, onClose, className = 
 
   return (
     <div
-      className={`absolute z-20 w-[190px] bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden ${className}`}
+      className={`w-full bg-slate-900/40 border border-white/[0.06] rounded-2xl overflow-hidden ${className}`}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="h-7 bg-white/5 border-b border-white/5 flex items-center justify-between px-2 select-none">
-        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-300">
+      <div className="h-9 border-b border-white/[0.05] flex items-center justify-between px-3 select-none">
+        <span className="flex items-center gap-1.5 text-[12px] font-medium text-slate-300">
           <Timer className="w-3 h-3 text-emerald-400" /> Stopwatch
         </span>
-        <button onClick={onClose} className="p-1 hover:bg-white/10 rounded text-slate-400" aria-label="Close stopwatch">
+        <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-sm text-slate-400" aria-label="Close stopwatch">
           <X className="w-3 h-3" />
         </button>
       </div>

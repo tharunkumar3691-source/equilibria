@@ -1,9 +1,11 @@
-import { Hammer, Layers, CircleDot, Target, Orbit, Waves, RefreshCw, Triangle, Rocket, Blocks, Scale, Package, LucideIcon } from 'lucide-react';
+import { Layers, CircleDot, Target, Orbit, Waves, RefreshCw, Blocks, Scale, Package, Disc3, TreePine, Hourglass, LucideIcon } from 'lucide-react';
 import { SimulationData } from '../types';
-import { MOCK_SIMULATION_DATA } from './gemini';
 import { SOLAR_SYSTEM } from './solarSystem';
+import { BLACK_HOLE } from './blackHole';
+import { TREE_HEIGHT } from './trigDemos';
+import { TIME_DILATION } from './relativityDemos';
 import { stage } from './demoStage';
-import { PENDULUM_WAVE, LOOP_THE_LOOP, GALTON_BOARD, CATAPULT, BLOCK_TOWER } from './moreDemos';
+import { PENDULUM_WAVE, LOOP_THE_LOOP, BLOCK_TOWER } from './moreDemos';
 import { SEESAW, CRATE_PUSH } from './humanDemos';
 
 export interface DemoScenario {
@@ -19,7 +21,7 @@ const DOMINO_SPIRAL: SimulationData = {
   demoMode: true,
   startMode: 'auto', // Has its own trigger: the user topples a domino by clicking it
   thought_process: "ANALYSIS COMPLETE.\n\nScenario: Chain Reaction (Rainbow Domino Spiral).\nVisuals: 100 colour-graded dominoes standing on an inward spiral.\nInteraction: Click any domino to topple it. Nothing falls until you touch one.\nPhysics Profile:\n- Mechanism: Sequential toppling (rigid box contacts).\n- Energy: Gravitational potential released link by link.\n- Wave speed: Set by spacing, height and gravity.\n\nWaiting for your touch...",
-  code: stage('0x0f172a') + `
+  code: stage('0x1a2426') + `
     world.gravity.set(0, -25, 0);
     world.solver.iterations = 20;
     camera.position.set(0, 34, 30);
@@ -140,7 +142,7 @@ const NEWTONS_CRADLE: SimulationData = {
   startMode: 'click',
   startHint: "Click anywhere to release the first ball",
   thought_process: "ANALYSIS COMPLETE.\n\nScenario: Momentum Transfer (Newton's Cradle).\nVisuals: Five suspended spheres on a rigid frame, one held at height.\nInteraction: Click anywhere on the scene to release the raised ball.\nPhysics Profile:\n- Mechanism: Pendulum constraints (PointToPoint).\n- Collisions: Near-elastic (restitution ~0.98).\n- Conservation: Momentum and kinetic energy pass through the row.\n\nWaiting for your click...",
-  code: stage('0x111827') + `
+  code: stage('0x1b2426') + `
     world.gravity.set(0, -30, 0);
     world.solver.iterations = 40;
     world.allowSleep = false;
@@ -244,7 +246,7 @@ const BOWLING_STRIKE: SimulationData = {
   startMode: 'click',
   startHint: "Click anywhere to bowl the ball",
   thought_process: "ANALYSIS COMPLETE.\n\nScenario: High-Speed Impact (Ten-Pin Bowling Strike).\nVisuals: Neon-lit lane, ball waiting at the foul line, ten pins in a triangle rack.\nInteraction: Click anywhere on the scene to bowl the ball.\nPhysics Profile:\n- Projectile: Heavy rolling sphere (~14kg) with matched spin.\n- Targets: Light, tall rigid bodies that tip and scatter.\n- Mechanism: Momentum transfer plus pin-to-pin collisions.\n\nWaiting for your click...",
-  code: stage('0x0b1120') + `
+  code: stage('0x161f22') + `
     world.gravity.set(0, -20, 0);
     world.solver.iterations = 30;
     camera.position.set(-20, 13, 20);
@@ -359,17 +361,24 @@ const BOWLING_STRIKE: SimulationData = {
   ]
 };
 
+// Where each demo really happens, shown in Realistic mode. 'realSize' is the real size (m) of the set-up's
+// largest dimension, which scales the room and furniture around it (the demos use their own units).
+const at = (data: SimulationData, environment: SimulationData['environment']): SimulationData => ({ ...data, environment });
+
+// In display order; the first is also the one the app falls back to
 export const DEMOS: DemoScenario[] = [
-  { id: 'seesaw', title: 'Seesaw Balance', tagline: 'A lighter rider further out beats a heavier one', accent: '#4ade80', icon: Scale, data: SEESAW },
-  { id: 'crate-push', title: 'Pushing a Crate', tagline: 'Static friction, breakaway and a steady push', accent: '#d97706', icon: Package, data: CRATE_PUSH },
-  { id: 'wrecking-ball', title: 'Wrecking Ball', tagline: 'A 500 kg pendulum smashes a brick wall', accent: '#ef4444', icon: Hammer, data: MOCK_SIMULATION_DATA },
-  { id: 'domino-spiral', title: 'Domino Spiral', tagline: 'Touch a domino to set off the chain reaction', accent: '#a855f7', icon: Layers, data: DOMINO_SPIRAL },
-  { id: 'newtons-cradle', title: "Newton's Cradle", tagline: 'Momentum passing through five spheres', accent: '#22d3ee', icon: CircleDot, data: NEWTONS_CRADLE },
-  { id: 'bowling-strike', title: 'Bowling Strike', tagline: 'A neon lane, ten pins and one heavy ball', accent: '#f59e0b', icon: Target, data: BOWLING_STRIKE },
-  { id: 'solar-system', title: 'Solar System', tagline: 'All eight planets orbiting the Sun under real gravity', accent: '#3b82f6', icon: Orbit, data: SOLAR_SYSTEM },
-  { id: 'pendulum-wave', title: 'Pendulum Wave', tagline: 'Twelve pendulums drift in and out of step', accent: '#14b8a6', icon: Waves, data: PENDULUM_WAVE },
-  { id: 'loop-the-loop', title: 'Loop the Loop', tagline: 'A ball rolls down a ramp and around a full loop', accent: '#f97316', icon: RefreshCw, data: LOOP_THE_LOOP },
-  { id: 'galton-board', title: 'Galton Board', tagline: 'Ninety balls bounce through pegs into a bell curve', accent: '#84cc16', icon: Triangle, data: GALTON_BOARD },
-  { id: 'catapult', title: 'Catapult', tagline: 'A counterweight flings a boulder at a castle', accent: '#eab308', icon: Rocket, data: CATAPULT },
-  { id: 'block-tower', title: 'Block Tower', tagline: 'Click a block to push it out and see what holds', accent: '#ec4899', icon: Blocks, data: BLOCK_TOWER }
+  // Accents: one soft, low-saturation family (aqua, lavender, periwinkle, apricot, sage, sand, rose...)
+  { id: 'newtons-cradle', title: "Newton's Cradle", tagline: 'Momentum passing through five spheres', accent: '#86c8d6', icon: CircleDot, data: at(NEWTONS_CRADLE, { setting: 'study', realSize: 0.24 }) },
+  { id: 'domino-spiral', title: 'Domino Spiral', tagline: 'Touch a domino to set off the chain reaction', accent: '#b6a8de', icon: Layers, data: at(DOMINO_SPIRAL, { setting: 'living-room', realSize: 1.2 }) },
+  { id: 'solar-system', title: 'Solar System', tagline: 'All eight planets orbiting the Sun under real gravity', accent: '#94b4e0', icon: Orbit, data: at(SOLAR_SYSTEM, { setting: 'space' }) },
+  // These two are their own setting already: a sunny field with one tree, and the depths of space
+  { id: 'tree-height', title: 'Tree Height', tagline: 'Trigonometry: measure a tree by its shadow, h = L tan θ', accent: '#9fcfa9', icon: TreePine, data: at(TREE_HEIGHT, { setting: 'none' }) },
+  { id: 'black-hole', title: 'Black Hole', tagline: 'Gravity so strong that not even light escapes', accent: '#e2ae84', icon: Disc3, data: at(BLACK_HOLE, { setting: 'none' }) },
+  { id: 'time-dilation', title: 'Time Dilation', tagline: 'The twin paradox: light clocks on a trip to Proxima Centauri', accent: '#a9bfe6', icon: Hourglass, data: at(TIME_DILATION, { setting: 'space' }) },
+  { id: 'seesaw', title: 'Seesaw Balance', tagline: 'A lighter rider further out beats a heavier one', accent: '#a3cba6', icon: Scale, data: at(SEESAW, { setting: 'park', upm: 1 }) },
+  { id: 'crate-push', title: 'Pushing a Crate', tagline: 'Static friction, breakaway and a steady push', accent: '#d8bd8a', icon: Package, data: at(CRATE_PUSH, { setting: 'warehouse', upm: 1 }) },
+  { id: 'bowling-strike', title: 'Bowling Strike', tagline: 'A neon lane, ten pins and one heavy ball', accent: '#e0a8a4', icon: Target, data: at(BOWLING_STRIKE, { setting: 'bowling-alley', upm: 4.5 }) },
+  { id: 'pendulum-wave', title: 'Pendulum Wave', tagline: 'Twelve pendulums drift in and out of step', accent: '#86c9b8', icon: Waves, data: at(PENDULUM_WAVE, { setting: 'lab', realSize: 0.9 }) },
+  { id: 'loop-the-loop', title: 'Loop the Loop', tagline: 'A ball rolls down a ramp and around a full loop', accent: '#d6aac8', icon: RefreshCw, data: at(LOOP_THE_LOOP, { setting: 'living-room', realSize: 1.1 }) },
+  { id: 'block-tower', title: 'Block Tower', tagline: 'Click a block to push it out and see what holds', accent: '#e3b9a3', icon: Blocks, data: at(BLOCK_TOWER, { setting: 'study', realSize: 0.3 }) }
 ];

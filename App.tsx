@@ -3,7 +3,9 @@ import { Sidebar } from './components/Sidebar';
 import { PhysicsRunner } from './components/PhysicsRunner';
 import { ChatAssistant } from './components/ChatAssistant';
 import { ShortcutsDialog, Tour } from './components/HelpCenter';
-import { generateSimulation, generateSimulationFromText, GenerationStage } from './lib/gemini';
+import { generateSimulation, generateSimulationFromText, GenerationStage, loadKeyCount } from './lib/gemini';
+import { solveAndSimulate } from './lib/problems';
+import { SolutionPanel } from './components/SolutionPanel';
 import { DEMOS, DemoScenario } from './lib/demos';
 import {
   listLibrary, saveToLibrary, removeFromLibrary, encodeShare, decodeShare, shareUrl, readSharePayload, clearSharePayload,
@@ -12,12 +14,16 @@ import {
 import { downloadBlob } from './lib/capture';
 import { getRating, likeScene, dislikeScene, clearRating, Rating, Complaint } from './lib/feedback';
 import { LibraryEntry, SimulationData } from './types';
-import { Beaker, Upload, Play, AlertCircle, Menu, Check, ShieldAlert } from 'lucide-react';
+import { Play, AlertCircle, Menu, Check, ShieldAlert, Sigma } from 'lucide-react';
+import { LogoMark, Wordmark } from './components/Logo';
+import { AiCommandBar } from './components/AiCommandBar';
+import { useSceneEditor } from './lib/useSceneEditor';
 
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;   // The analysis request carries the clip inline; larger ones are rejected
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;   // Photos of problems are scaled down before they are sent
 const TOUR_KEY = 'simulaitor.tourDone';
 
-type GenerationKind = 'video' | 'text' | 'demo';
+type GenerationKind = 'video' | 'text' | 'problem' | 'demo';
 
 interface Progress {
   kind: GenerationKind;
@@ -35,18 +41,24 @@ const STAGE_LABELS: Record<GenerationStage, string> = {
   repairing: 'Fixing problems the test found',
   reviewing: 'Reviewing pictures of the scene',
   improving: 'Improving what the review found',
-  building: 'Building the 3D scene'
+  building: 'Building the 3D scene',
+  solving: 'Solving it, and building the simulation alongside',
+  verifying: 'Measuring the answers in the simulation',
+  reconciling: 'Working out why they disagree'
 };
+const stageLabel = (kind: GenerationKind, stage: GenerationStage) =>
+  kind === 'problem' && stage === 'reading' ? 'Reading the problem' : STAGE_LABELS[stage];
 
 // The steps every generation goes through; repairs and improvements are added as they happen
-const PLANS: Record<'video' | 'text', GenerationStage[]> = {
+const PLANS: Record<'video' | 'text' | 'problem', GenerationStage[]> = {
   video: ['reading', 'measuring', 'analysing', 'checking', 'reviewing', 'building'],
-  text: ['analysing', 'checking', 'reviewing', 'building']
+  text: ['analysing', 'checking', 'reviewing', 'building'],
+  problem: ['reading', 'solving', 'verifying', 'building']
 };
 
 // The steps done so far, then the planned steps still to come
 const stagesFor = (progress: Progress): GenerationStage[] => {
-  const plan = PLANS[progress.kind === 'video' ? 'video' : 'text'];
+  const plan = PLANS[progress.kind === 'demo' ? 'text' : progress.kind];
   const reached = Math.max(...progress.history.map(s => plan.indexOf(s)));
   return [...progress.history, ...plan.slice(reached + 1)];
 };
@@ -70,8 +82,8 @@ const GenerationProgress: React.FC<{ progress: Progress }> = ({ progress }) => {
   if (progress.kind === 'demo') {
     return (
       <div className="flex flex-col items-center">
-        <div className="w-14 h-14 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-        <span className="font-mono text-sm text-blue-400">Loading the scene...</span>
+        <div className="w-12 h-12 border-2 border-blue-400/20 border-t-blue-300 rounded-full animate-spin mb-4"></div>
+        <span className="text-sm text-blue-200">Preparing the scene…</span>
       </div>
     );
   }
@@ -80,29 +92,31 @@ const GenerationProgress: React.FC<{ progress: Progress }> = ({ progress }) => {
   const activeIndex = progress.history.length - 1;
 
   return (
-    <div className="w-[min(360px,calc(100vw-3rem))] p-5 rounded-2xl bg-slate-900/90 border border-white/10 shadow-2xl" role="status" aria-live="polite">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-bold text-slate-100">Generating your simulation</span>
-        <span className="text-xs font-mono tabular-nums text-slate-400">{elapsed}s</span>
+    <div className="w-[min(380px,calc(100vw-3rem))] p-6 rounded-3xl bg-slate-900/85 border border-white/[0.06] shadow-calm backdrop-blur-xl" role="status" aria-live="polite">
+      <div className="flex items-center justify-between mb-5">
+        <span className="font-display text-lg text-slate-50">Shaping your simulation</span>
+        <span className="text-xs tabular-nums text-slate-400">{elapsed}s</span>
       </div>
       <ol className="space-y-2.5">
         {stages.map((stage, i) => {
           const done = i < activeIndex, active = i === activeIndex;
           return (
             <li key={`${stage}-${i}`} className="flex items-start gap-3">
-              <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${done ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300' : active ? 'border-blue-400/60' : 'border-slate-700'}`}>
-                {done ? <Check className="w-3 h-3" /> : active ? <span className="h-3 w-3 rounded-full border-2 border-blue-500/30 border-t-blue-400 animate-spin"></span> : null}
+              <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${done ? 'bg-blue-400/15 border-blue-300/40 text-blue-200' : active ? 'border-blue-300/50' : 'border-slate-700'}`}>
+                {done ? <Check className="w-3 h-3" /> : active ? <span className="h-3 w-3 rounded-full border-2 border-blue-400/25 border-t-blue-300 animate-spin"></span> : null}
               </span>
               <span className="flex flex-col leading-tight">
-                <span className={`text-xs ${done ? 'text-slate-400' : active ? 'text-slate-100 font-semibold' : 'text-slate-600'}`}>{STAGE_LABELS[stage]}</span>
-                {active && progress.detail && <span className="text-[10px] font-mono text-slate-500">{progress.detail}</span>}
+                <span className={`text-[13px] ${done ? 'text-slate-400' : active ? 'text-slate-50 font-medium' : 'text-slate-600'}`}>{stageLabel(progress.kind, stage)}</span>
+                {active && progress.detail && <span className="text-[11px] text-slate-500">{progress.detail}</span>}
               </span>
             </li>
           );
         })}
       </ol>
-      <p className="mt-4 text-[11px] leading-snug text-slate-500">
-        Usually 1 to 3 minutes: the scene is tested, fixed if needed, and checked from pictures. If one model is busy, the next one is tried automatically.
+      <p className="mt-5 text-[12px] leading-relaxed text-slate-500">
+        {progress.kind === 'problem'
+          ? 'This usually takes one to three minutes. The answers are worked out, then measured in a simulation built without seeing them, before you see either.'
+          : 'This usually takes one to three minutes. Each scene is tested, refined and checked from pictures before you see it, so there is time for a slow breath or two.'}
       </p>
     </div>
   );
@@ -123,17 +137,22 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  // The "Change with AI" bar under the simulation: opened with the toolbar's AI edit button
+  const [aiBarOpen, setAiBarOpen] = useState(false);
+  // The worked solution beside a problem's simulation
+  const [solutionOpen, setSolutionOpen] = useState(true);
   const [quality, setQuality] = useState(() => { try { return localStorage.getItem(QUALITY_KEY) === '1'; } catch { return false; } });
   const [rating, setRating] = useState<Rating | null>(null);
   const videoUrlRef = useRef<string | null>(null);
   // Only the newest request may show its result (an older one finishing late is ignored)
   const requestRef = useRef(0);
+  // Read once, before the share-link effect below clears the address bar
+  const [arrivedByLink] = useState(() => !!readSharePayload());
 
   useEffect(() => {
-    // Check if API key is in environment (simulated check)
-    if (process.env.API_KEY) {
-      setApiKeyAvailable(true);
-    }
+    // The keys stay on the server; it only says whether it has any
+    loadKeyCount().then(count => setApiKeyAvailable(count > 0));
   }, []);
 
   // Each scene shows the rating it was given before
@@ -168,11 +187,11 @@ export default function App() {
   useEffect(() => {
     let done = true;
     try { done = localStorage.getItem(TOUR_KEY) === '1'; } catch {}
-    if (!done && !readSharePayload()) {
+    if (!done && !arrivedByLink) {
       const timer = window.setTimeout(() => setShowTour(true), 600);
       return () => window.clearTimeout(timer);
     }
-  }, []);
+  }, [arrivedByLink]);
 
   const closeTour = useCallback(() => {
     setShowTour(false);
@@ -193,7 +212,7 @@ export default function App() {
   }, []);
 
   // Runs one generation and reports its real progress
-  const runGeneration = async (kind: 'video' | 'text', video: string | null, generate: (onStage: (stage: GenerationStage, detail?: string) => void) => Promise<SimulationData>) => {
+  const runGeneration = async (kind: 'video' | 'text' | 'problem', video: string | null, generate: (onStage: (stage: GenerationStage, detail?: string) => void) => Promise<SimulationData>) => {
     const request = ++requestRef.current;
     setLoading(true);
     setError(null);
@@ -202,7 +221,7 @@ export default function App() {
     setMenuOpen(false);
     setSourceVideo(video);
     const startedAt = Date.now();
-    const first: GenerationStage = kind === 'video' ? 'reading' : 'analysing';
+    const first: GenerationStage = kind === 'text' ? 'analysing' : 'reading';
     setProgress({ kind, stage: first, history: [first], startedAt });
 
     try {
@@ -225,6 +244,23 @@ export default function App() {
         setLoading(false);
         setProgress(null);
       }
+    }
+  };
+
+  // A photo of a problem, at most 2048 px on its longer side (plenty to read print), as JPEG.
+  // Formats the browser cannot draw (HEIC on some systems) are sent as they are.
+  const photoForModel = async (file: File): Promise<{ base64Data: string; mimeType: string }> => {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      return { base64Data: canvas.toDataURL('image/jpeg', 0.9).split(',')[1], mimeType: 'image/jpeg' };
+    } catch {
+      return { base64Data: await readAsBase64(file), mimeType: file.type || 'image/jpeg' };
     }
   };
 
@@ -268,6 +304,19 @@ export default function App() {
     runGeneration('text', null, (onStage) => generateSimulationFromText(prompt, { onStage, quality }));
   };
 
+  const handleSolveProblem = (text: string, photo: File | null) => {
+    if (photo && photo.size > MAX_PHOTO_BYTES) {
+      setError(`That photo is ${(photo.size / 1024 / 1024).toFixed(1)} MB. Please use one under 15 MB.`);
+      return;
+    }
+    setSolutionOpen(true);
+    runGeneration('problem', null, async (onStage) => {
+      onStage('reading');
+      const image = photo ? await photoForModel(photo) : undefined;
+      return solveAndSimulate({ text, image }, { onStage, quality });
+    });
+  };
+
   const changeQuality = (on: boolean) => {
     setQuality(on);
     try { localStorage.setItem(QUALITY_KEY, on ? '1' : '0'); } catch {}
@@ -288,22 +337,17 @@ export default function App() {
     setRating(value);
   };
 
-  // Shows a simulation that needs no generating (a demo, a saved one, a shared one)
+  // Shows a simulation that needs no generating (a demo, a saved one, a shared one), straight away
   const openReady = (data: SimulationData, demoId: string | null) => {
-    const request = ++requestRef.current;
-    setLoading(true);
+    ++requestRef.current;   // Any generation still running no longer gets to show its result
+    setLoading(false);
+    setProgress(null);
     setError(null);
     setActiveDemoId(demoId);
     setMenuOpen(false);
     setSourceVideo(null);
-    setProgress({ kind: 'demo', stage: 'building', history: ['building'], startedAt: Date.now() });
-    setTimeout(() => {
-      if (request !== requestRef.current) return;
-      // Fresh object so picking the same one again rebuilds the scene
-      setSimulationData({ ...data });
-      setLoading(false);
-      setProgress(null);
-    }, 500);
+    // Fresh object so picking the same one again rebuilds the scene
+    setSimulationData({ ...data });
   };
 
   const loadDemo = (demo: DemoScenario = DEMOS[0]) => openReady({ ...demo.data, title: demo.title }, demo.id);
@@ -313,6 +357,9 @@ export default function App() {
     setSimulationData({ ...newData, title: newData.title || simulationData?.title, request: newData.request || simulationData?.request });
     setActiveDemoId(null);
   };
+
+  // Editing the open scene by conversation: shared by the bar under the simulation and the conversation panel
+  const editor = useSceneEditor(apiKeyAvailable, simulationData, handleUpdateSimulation);
 
   // --- Library, sharing, files ---
   const handleSave = (name: string) => {
@@ -371,26 +418,28 @@ export default function App() {
   };
 
   const loadingLabel = progress
-    ? progress.kind === 'demo' ? 'Loading the scene...' : `${STAGE_LABELS[progress.stage]}...`
+    ? progress.kind === 'demo' ? 'Preparing the scene…' : `${stageLabel(progress.kind, progress.stage)}…`
     : undefined;
+  const problem = !loading ? simulationData?.problem : undefined;
 
   return (
     <div className="flex h-screen w-screen bg-science-950 text-slate-200 font-sans relative overflow-hidden">
-      {/* Background Grid */}
+      {/* Backdrop: faint, slowly breathing glows (see index.html) */}
       <div className="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
 
       {/* Main Layout */}
       <div className="z-10 flex w-full h-full p-2 sm:p-4 gap-4">
 
         {/* Left: Sidebar / Control Center. A slide-over drawer on small screens, a fixed column on large ones. */}
-        {menuOpen && <div className="fixed inset-0 z-30 bg-slate-950/70 lg:hidden" onClick={() => setMenuOpen(false)}></div>}
-        <div className={`fixed inset-y-0 left-0 z-40 w-[min(88vw,340px)] p-3 bg-slate-950/95 border-r border-white/10 transition-transform duration-300 lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:p-0 lg:bg-transparent lg:border-0 lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {menuOpen && <div className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs lg:hidden" onClick={() => setMenuOpen(false)}></div>}
+        <div className={`fixed inset-y-0 left-0 z-40 w-[min(88vw,340px)] p-3 bg-slate-950/95 border-r border-white/[0.06] transition-transform duration-500 ease-out lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:p-0 lg:bg-transparent lg:border-0 lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <Sidebar
             loading={loading}
             loadingLabel={loadingLabel}
             simulationData={simulationData}
             onUpload={handleFileUpload}
             onGenerateFromText={handleGenerateFromText}
+            onSolveProblem={handleSolveProblem}
             onLoadDemo={loadDemo}
             demos={DEMOS}
             activeDemoId={activeDemoId}
@@ -413,39 +462,37 @@ export default function App() {
         </div>
 
         {/* Right: Simulation Canvas */}
-        <main className="flex-1 min-w-0 glass rounded-2xl relative overflow-hidden flex flex-col">
+        <main className="flex-1 min-w-0 glass rounded-3xl relative overflow-hidden flex flex-col">
 
           {/* Small-screen header: opens the menu */}
-          <div className="lg:hidden shrink-0 h-11 flex items-center gap-2 px-2 border-b border-white/10 bg-slate-950/40">
-            <button onClick={() => setMenuOpen(true)} className="p-2 rounded-lg text-slate-300 hover:bg-white/10" aria-label="Open menu">
+          <div className="lg:hidden shrink-0 h-12 flex items-center gap-2 px-2 border-b border-white/[0.06] bg-slate-950/30">
+            <button onClick={() => setMenuOpen(true)} className="p-2 rounded-lg text-slate-300 hover:bg-white/5" aria-label="Open menu">
               <Menu className="w-5 h-5" />
             </button>
-            <span className="flex items-center gap-1.5 text-sm font-black tracking-tighter text-white">
-              <Beaker className="w-4 h-4 text-blue-500" /> SIMUL-AI-TOR
-            </span>
+            <Wordmark />
             {simulationData?.title && <span className="ml-auto truncate text-xs text-slate-400">{simulationData.title}</span>}
           </div>
 
           {error && (
-            <div className="absolute top-14 lg:top-4 left-4 right-4 z-50 bg-red-950/90 border border-red-500/50 p-4 rounded-lg flex items-center justify-between gap-3 text-red-200 backdrop-blur-md shadow-lg animate-in fade-in slide-in-from-top-2" role="alert">
+            <div className="absolute top-14 lg:top-4 left-4 right-4 z-50 bg-slate-900/90 border border-red-300/20 p-4 rounded-2xl flex items-center justify-between gap-3 text-slate-200 backdrop-blur-xl shadow-calm" role="alert">
               <div className="flex items-start gap-3 overflow-hidden">
-                <AlertCircle className="w-5 h-5 mt-0.5 text-red-400 shrink-0" />
+                <AlertCircle className="w-5 h-5 mt-0.5 text-red-300 shrink-0" />
                 <div className="flex flex-col gap-1 w-full">
-                  <span className="font-bold text-sm">Something went wrong</span>
-                  <span className="text-xs font-mono break-words opacity-90 max-h-20 overflow-y-auto custom-scrollbar">{error}</span>
+                  <span className="font-medium text-sm text-red-200">That didn't go as planned</span>
+                  <span className="text-[13px] leading-snug text-slate-300 break-words max-h-20 overflow-y-auto">{error}</span>
                 </div>
               </div>
               <div className="flex shrink-0 flex-col sm:flex-row gap-2">
                 {!simulationData && (
                   <button
                     onClick={() => loadDemo()}
-                    className="px-3 py-2 bg-red-900/50 hover:bg-red-800/50 border border-red-400/30 rounded text-xs font-mono whitespace-nowrap transition-colors text-white"
+                    className="px-3.5 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-xs font-medium whitespace-nowrap text-white"
                   >
-                    TRY A DEMO
+                    Try a demo
                   </button>
                 )}
-                <button onClick={() => setError(null)} className="px-3 py-2 border border-red-400/30 hover:bg-red-800/40 rounded text-xs font-mono text-white">
-                  DISMISS
+                <button onClick={() => setError(null)} className="px-3.5 py-2 rounded-full border border-white/10 hover:bg-white/5 text-xs text-slate-200">
+                  Dismiss
                 </button>
               </div>
             </div>
@@ -455,61 +502,54 @@ export default function App() {
           <div className="flex-1 min-h-0 w-full relative" data-tour="stage">
             {!simulationData && !loading && (
               <div className="absolute inset-0 overflow-y-auto">
-                <div className="min-h-full flex flex-col items-center justify-center text-center p-6 sm:p-8">
-                  {/* Title (large screens; small screens have the header bar above) */}
-                  <div className="hidden lg:block mb-8 select-none">
-                    <h1 className="text-3xl font-black tracking-tighter text-white flex items-center justify-center gap-3 drop-shadow-lg">
-                      <Beaker className="w-8 h-8 text-blue-500 fill-blue-500/20" />
-                      SIMUL-AI-TOR
+                <div className="min-h-full flex flex-col items-center justify-center text-center p-6 sm:p-10">
+                  {/* Welcome */}
+                  <div className="select-none mb-9">
+                    <div className="hidden lg:flex justify-center mb-5"><LogoMark className="w-14 h-14" /></div>
+                    <h1 className="font-display text-4xl sm:text-5xl text-slate-50 leading-tight">
+                      {error ? 'Let’s try that again' : 'Physics, gently revealed'}
                     </h1>
-                    <p className="mt-2 text-blue-100/70 text-sm font-light max-w-lg">
-                      Turn a video or a sentence into a live, interactive physics simulation. Analyse the motion, measure it, and experiment in 3D.
+                    <p className="mt-4 mx-auto text-slate-400 text-[15px] leading-relaxed max-w-xl">
+                      {error
+                        ? 'The note above explains what happened. You can try once more, or settle into one of the demos below.'
+                        : 'Bring a textbook problem and get a step-by-step solution, checked against a 3D simulation of it. Or bring a short video or a sentence, and watch it become a living 3D world.'}
                     </p>
                   </div>
 
-                  <div className={`w-16 h-16 shrink-0 rounded-full border flex items-center justify-center mb-4 transition-colors ${error ? 'bg-red-500/10 border-red-500/50' : 'bg-slate-800/50 border-slate-700'}`}>
-                    {error ? <AlertCircle className="w-8 h-8 text-red-500" /> : <Upload className="w-8 h-8 text-slate-500" />}
-                  </div>
-                  <h2 className="text-xl text-slate-300 font-medium mb-2">{error ? 'That did not work' : 'Ready to simulate'}</h2>
-                  <p className="text-slate-500 max-w-md text-sm">
-                    {error
-                      ? "The message above says what went wrong. You can try again, or start from a demo."
-                      : "Upload a short video of something moving, or describe a scene in words, and get an interactive 3D model of it."}
-                  </p>
-                  <button onClick={() => setMenuOpen(true)} className="lg:hidden mt-4 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold">
+                  <button onClick={() => setMenuOpen(true)} className="lg:hidden -mt-3 mb-6 px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium shadow-calm">
                     Create a simulation
                   </button>
 
-                  <div className="mt-7 flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    <span className="w-10 h-px bg-slate-700"></span>
-                    Or explore a 3D demo
-                    <span className="w-10 h-px bg-slate-700"></span>
+                  <div className="flex items-center gap-4 text-[13px] text-slate-500">
+                    <span className="w-12 h-px bg-gradient-to-r from-transparent to-slate-700"></span>
+                    Or begin with a demo
+                    <span className="w-12 h-px bg-gradient-to-l from-transparent to-slate-700"></span>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 w-full max-w-5xl">
+                  <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3.5 w-full max-w-5xl">
                     {DEMOS.map(demo => {
                       const Icon = demo.icon;
                       return (
                         <button
                           key={demo.id}
                           onClick={() => loadDemo(demo)}
-                          className="group relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 p-4 text-left transition-all duration-300 hover:-translate-y-1 hover:border-white/25 hover:shadow-2xl"
-                          style={{ backgroundImage: `linear-gradient(160deg, ${demo.accent}33 0%, transparent 60%)` }}
+                          className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-slate-900/40 p-4 text-left transition-all duration-500 ease-out hover:-translate-y-0.5 hover:border-white/15 hover:bg-slate-900/60 hover:shadow-calm"
+                          style={{ backgroundImage: `linear-gradient(165deg, ${demo.accent}1a 0%, transparent 55%)` }}
                         >
                           <div
-                            className="absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-40 transition-opacity group-hover:opacity-80"
+                            className="absolute -top-10 -right-10 w-28 h-28 rounded-full blur-3xl opacity-20 transition-opacity duration-700 group-hover:opacity-40"
                             style={{ backgroundColor: demo.accent }}
                           ></div>
                           <div
-                            className="relative w-10 h-10 rounded-xl flex items-center justify-center border border-white/10 mb-3"
-                            style={{ backgroundColor: `${demo.accent}30`, color: demo.accent }}
+                            className="relative w-10 h-10 rounded-xl flex items-center justify-center mb-3.5"
+                            style={{ backgroundColor: `${demo.accent}1f`, color: demo.accent }}
                           >
                             <Icon className="w-5 h-5" />
                           </div>
-                          <div className="relative text-sm font-bold text-slate-100">{demo.title}</div>
-                          <div className="relative mt-1 text-[11px] leading-snug text-slate-400">{demo.tagline}</div>
-                          <div className="relative mt-3 flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 transition-colors group-hover:text-white">
-                            <Play className="w-3 h-3 fill-current" /> Run
+                          <div className="relative text-[14px] font-medium text-slate-100">{demo.title}</div>
+                          <div className="relative mt-1 text-[12px] leading-snug text-slate-400">{demo.tagline}</div>
+                          <div className="relative mt-3.5 flex items-center gap-1.5 text-[12px] text-slate-500 transition-colors duration-300 group-hover:text-slate-200">
+                            <Play className="w-3 h-3 fill-current" /> Open
                           </div>
                         </button>
                       );
@@ -520,41 +560,69 @@ export default function App() {
             )}
 
             {simulationData && (
-               <PhysicsRunner simulationData={simulationData} onError={setError} sourceVideoUrl={videoUrl} onOpenHelp={() => setShowHelp(true)} />
+               <PhysicsRunner
+                   simulationData={simulationData}
+                   onError={setError}
+                   sourceVideoUrl={videoUrl}
+                   onOpenHelp={() => setShowHelp(true)}
+                   onOpenChat={() => setAiBarOpen(open => !open)}
+                   aiOpen={aiBarOpen || editor.busy}
+                   aiBusy={editor.busy}
+                   footer={(aiBarOpen || editor.busy) ? (
+                       <AiCommandBar editor={editor} onOpenConversation={() => setChatOpen(true)} onClose={() => setAiBarOpen(false)} />
+                   ) : undefined}
+               />
             )}
 
             {loading && progress && (
-               <div className="absolute inset-0 flex items-center justify-center bg-science-950/80 backdrop-blur-sm z-50">
+               <div className="absolute inset-0 flex items-center justify-center bg-science-950/70 backdrop-blur-md z-50">
                   <GenerationProgress progress={progress} />
                </div>
             )}
           </div>
+
+          {/* Reopens a problem's solution once it has been hidden */}
+          {problem && !solutionOpen && (
+            <button
+              onClick={() => setSolutionOpen(true)}
+              className="absolute top-14 lg:top-3 right-3 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-white/10 text-[12px] font-medium text-slate-100 shadow-calm backdrop-blur-xl hover:bg-slate-800"
+            >
+              <Sigma className="w-3.5 h-3.5 text-blue-300" /> Show solution
+            </button>
+          )}
         </main>
+
+        {/* Right: a problem's worked solution. A column on wide screens, a slide-over on smaller ones. */}
+        {problem && solutionOpen && (
+          <div className="fixed inset-y-0 right-0 z-40 w-[min(94vw,420px)] p-2 bg-slate-950/95 border-l border-white/[0.06] xl:static xl:z-auto xl:w-[400px] xl:shrink-0 xl:p-0 xl:bg-transparent xl:border-0">
+            <SolutionPanel problem={problem} onClose={() => setSolutionOpen(false)} />
+          </div>
+        )}
       </div>
 
       {/* Short confirmations */}
       {notice && (
         <div className="fixed top-4 inset-x-0 z-[110] flex justify-center px-4 pointer-events-none" role="status" aria-live="polite">
-          <div className="max-w-md px-4 py-2.5 rounded-xl bg-slate-800/95 border border-emerald-400/30 shadow-2xl text-xs text-slate-100 flex items-start gap-2">
-            <Check className="w-4 h-4 shrink-0 text-emerald-400" /> {notice}
+          <div className="max-w-md px-4 py-3 rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/[0.08] shadow-calm text-[13px] text-slate-100 flex items-start gap-2.5">
+            <Check className="w-4 h-4 shrink-0 mt-px text-blue-300" /> {notice}
           </div>
         </div>
       )}
 
       {/* A simulation from a link or a file contains code, so it only runs once the user agrees */}
       {incoming && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Open shared simulation">
-          <div className="w-full max-w-md p-5 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-100">
-              <ShieldAlert className="w-4 h-4 text-amber-400" /> Open this {incoming.source === 'link' ? 'shared simulation' : 'simulation file'}?
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Open shared simulation">
+          <div className="w-full max-w-md p-6 bg-slate-900/95 border border-white/[0.08] rounded-3xl shadow-calm">
+            <h2 className="flex items-center gap-2 font-display text-lg text-slate-50">
+              <ShieldAlert className="w-4 h-4 text-amber-300" /> Open this {incoming.source === 'link' ? 'shared simulation' : 'simulation file'}?
             </h2>
-            <p className="mt-1 text-sm text-slate-200 font-semibold truncate">{incoming.data.title || 'Untitled simulation'}</p>
-            <p className="mt-3 text-xs leading-relaxed text-slate-400">
+            <p className="mt-1.5 text-sm text-slate-200 font-medium truncate">{incoming.data.title || 'Untitled simulation'}</p>
+            <p className="mt-3 text-[13px] leading-relaxed text-slate-400">
               A simulation is a small program that runs in your browser on this page. Only open simulations from people you trust.
             </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setIncoming(null)} className="px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-white/10">Cancel</button>
-              <button onClick={acceptIncoming} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold" autoFocus>Open it</button>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setIncoming(null)} className="px-4 py-2 rounded-full text-xs text-slate-300 hover:bg-white/5">Not now</button>
+              <button onClick={acceptIncoming} className="px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium" autoFocus>Open it</button>
             </div>
           </div>
         </div>
@@ -565,9 +633,11 @@ export default function App() {
 
       {/* Floating Chat Assistant */}
       <ChatAssistant
-        apiKeyAvailable={apiKeyAvailable}
+        editor={editor}
         simulationData={simulationData}
-        onUpdateSimulation={handleUpdateSimulation}
+        isOpen={chatOpen}
+        onOpenChange={setChatOpen}
+        showLauncher={!simulationData}
       />
     </div>
   );

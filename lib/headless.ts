@@ -10,7 +10,8 @@ import { SweepBroadphase } from './broadphase';
 import { realMaterial, addGround } from './sceneKit';
 import { createHuman, isHumanKind, Human } from './humans';
 import { FloorBounds, findFloor, pickMainBody, addBoundaryWalls, enforceBounds } from './bounds';
-import { frameShot, shotPoints } from './framing';
+import { frameShot, shotPoints, sceneBox, fitWholeScene } from './framing';
+import { installTextbookPhysics } from './textbookPhysics';
 
 export const STEP = 1 / 60;                       // The live view's fixed physics step
 export const DEFAULT_CAMERA = new THREE.Vector3(20, 20, 30);
@@ -39,9 +40,11 @@ export interface HeadlessScene {
 }
 
 // realHumans: load the real people (for pictures). Without it a stand-in of the right size is used.
-export function buildHeadless(data: SimulationData, options: { realHumans?: boolean; aspect?: number } = {}): HeadlessScene {
+// stepSize: a finer physics step than the live view's, for measuring (lib/measure.ts).
+export function buildHeadless(data: SimulationData, options: { realHumans?: boolean; aspect?: number; stepSize?: number } = {}): HeadlessScene {
+  const stepSize = options.stepSize ?? STEP;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0f172a);
+  scene.background = new THREE.Color(0x141c1e); // The live view's backdrop (components/PhysicsRunner.tsx)
   scene.fog = new THREE.Fog(0x0f172a, 20, 100);
   const camera = new THREE.PerspectiveCamera(45, options.aspect ?? 16 / 9, 0.1, 1000);
   camera.position.copy(DEFAULT_CAMERA);
@@ -65,6 +68,7 @@ export function buildHeadless(data: SimulationData, options: { realHumans?: bool
   (world.solver as any).iterations = 10;
   world.defaultContactMaterial.friction = 0.3;
   world.defaultContactMaterial.restitution = 0;
+  if (data.textbookPhysics) installTextbookPhysics(world);
 
   const objects: HeadlessObject[] = [];
   const frameCallbacks: (() => void)[] = [];
@@ -77,12 +81,14 @@ export function buildHeadless(data: SimulationData, options: { realHumans?: bool
     ground: null, groundCalls: 0, readoutCalls: 0, ambience: null, declaredMain: false,
     main: null, bounds: null, lookAt: null,
     step() {
-      world.step(STEP);
+      world.step(stepSize);
       frameCallbacks.forEach(cb => cb());
     },
     frame() {
       const target = result.lookAt ? result.lookAt.clone() : new THREE.Vector3();
       if (!data.demoMode) frameShot(camera, target, shotPoints(target, objects.map(o => o.body), figures, scene));
+      // The live view's opening shot (components/PhysicsRunner.tsx) also steps back to show the whole set-up
+      fitWholeScene(camera, target, sceneBox(scene.children, shotPoints(target, objects.map(o => o.body), figures, scene)), 220, 960);
       camera.lookAt(target);
       camera.updateMatrixWorld();
     },
@@ -137,16 +143,18 @@ export function buildHeadless(data: SimulationData, options: { realHumans?: bool
   const setAmbience = (kind: string) => { result.ambience = String(kind); };
   const setReadout = () => { result.readoutCalls++; };
 
+  const humanCounts: Record<string, number> = {};
   const addHuman = (kind: string, opts?: { height?: number; pose?: (h: Human) => void }) => {
     const safeKind = isHumanKind(kind) ? kind : 'man';
     const pose = opts && typeof opts.pose === 'function' ? opts.pose : null;
     if (options.realHumans) {
       let resolve!: () => void;
       pending.push(new Promise<void>(r => { resolve = r; }));
+      const variant = humanCounts[safeKind] = (humanCounts[safeKind] ?? -1) + 1;   // As in the live view
       const human = createHuman(safeKind, opts && Number(opts.height), h => {
         try { if (pose) pose(h); } catch (e) { console.warn('[Preview] pose threw:', e); }
         resolve();
-      });
+      }, variant);
       scene.add(human.object);
       figures.push(human.object);
       if (pose) frameCallbacks.push(() => { if (human.ready) pose(human); });

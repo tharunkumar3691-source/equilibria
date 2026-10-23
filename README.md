@@ -1,20 +1,21 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Equilibria
 
-# Run and deploy your AI Studio app
+*Physics, gently revealed.*
 
-This contains everything you need to run your app locally.
+Equilibria turns a short video, or a single sentence, into a calm, interactive 3D physics simulation.
+Pause it, rewind it, measure it and change it at your own pace, or settle into one of the ten built-in
+demos, from Newton's cradle to a black hole.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1UnzbTO4ft6gseOLgGbTlE6nuEo1IyBi8
+## Run locally
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. To create new scenes, set `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+   (the demos work without one). The key stays on the server: the page sends its Gemini requests to
+   `/api/gemini`, which adds the key and forwards them to Google.
 3. Run the app:
-   `npm run dev`
+   `npm run dev`, then open http://localhost:3000
+4. To deploy: `npm run build`, then `npm start` (serves `dist/` and the Gemini proxy; set `PORT` and
+   `GEMINI_API_KEY` in the host's environment, or in `.env.local`)

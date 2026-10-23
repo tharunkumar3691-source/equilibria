@@ -2,19 +2,18 @@
 // closest built-in demo are found by keyword and shown to the model, so it starts from something that
 // already works instead of from nothing.
 import { listLiked, LikedScene } from './feedback';
-import type { DemoScenario } from './demos';
+import { DEMOS, DemoScenario } from './demos';
 
 // What each built-in demo shows, in the words people use to ask for it
 const DEMO_KEYWORDS: Record<string, string[]> = {
-  'wrecking-ball': ['wrecking', 'crane', 'demolition', 'wall', 'brick', 'bricks', 'chain', 'swing', 'swinging', 'pendulum', 'smash', 'knock'],
   'domino-spiral': ['domino', 'dominoes', 'dominos', 'topple', 'chain', 'reaction', 'fall', 'falling'],
   'newtons-cradle': ['newton', 'cradle', 'momentum', 'collision', 'elastic', 'balls', 'steel', 'pendulum', 'pendulums', 'transfer'],
   'bowling-strike': ['bowling', 'pins', 'pin', 'lane', 'strike', 'roll', 'rolling', 'ball'],
+  'tree-height': ['tree', 'height', 'shadow', 'trigonometry', 'tangent', 'tan', 'angle', 'elevation', 'similar', 'triangle', 'triangles', 'clinometer', 'thales'],
+  'black-hole': ['black', 'hole', 'horizon', 'singularity', 'accretion', 'quasar', 'neutron', 'pulsar', 'spaghettification', 'lensing', 'einstein', 'relativity', 'schwarzschild', 'swallow', 'swallowed'],
   'solar-system': ['orbit', 'orbits', 'orbiting', 'planet', 'planets', 'sun', 'moon', 'earth', 'space', 'satellite', 'gravity', 'solar'],
   'pendulum-wave': ['pendulum', 'pendulums', 'wave', 'oscillation', 'oscillate', 'period', 'swing', 'harmonic'],
   'loop-the-loop': ['loop', 'track', 'roller', 'coaster', 'ramp', 'slope', 'incline', 'rolling', 'roll', 'marble', 'circular', 'centripetal'],
-  'galton-board': ['galton', 'plinko', 'pegs', 'peg', 'probability', 'distribution', 'bell', 'curve', 'marbles', 'random'],
-  'catapult': ['catapult', 'trebuchet', 'launch', 'launched', 'projectile', 'throw', 'thrown', 'fling', 'counterweight', 'castle', 'lever'],
   'block-tower': ['jenga', 'tower', 'stack', 'stacked', 'blocks', 'block', 'balance', 'collapse', 'pile'],
   'seesaw': ['seesaw', 'see-saw', 'teeter', 'lever', 'torque', 'balance', 'pivot', 'fulcrum', 'playground'],
   'crate-push': ['push', 'pushing', 'pushes', 'friction', 'crate', 'box', 'slide', 'sliding', 'drag', 'static', 'kinetic', 'warehouse']
@@ -52,8 +51,6 @@ export async function pickExamples(request: string): Promise<ExamplePicks> {
     if (score > likedScore) { liked = entry; likedScore = score; }
   }
 
-  // Loaded only when needed (demos.ts imports this module's caller)
-  const { DEMOS } = await import('./demos');
   let demo: DemoScenario | null = null, demoScore = 0;
   for (const d of DEMOS) {
     const keys = DEMO_KEYWORDS[d.id];

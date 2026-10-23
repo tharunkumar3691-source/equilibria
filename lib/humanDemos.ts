@@ -16,7 +16,7 @@ export const SEESAW: SimulationData = {
   startMode: 'click',
   startHint: "Click anywhere to let go of the seesaw",
   thought_process: "ANALYSIS COMPLETE.\n\nScenario: A playground seesaw with two adult riders.\nVisuals: An 80 kg man sits 1.2 m from the pivot; a 55 kg woman sits on the end seat, 1.8 m out.\nInteraction: Click anywhere to let go of the level seesaw.\nPhysics Profile:\n- Torque: a weight turns the plank with torque τ = m·g·d, where d is its horizontal distance from the pivot (the lever arm).\n- His side: 80 × 9.81 × 1.2 = 942 N·m. Her side: 55 × 9.81 × 1.8 = 971 N·m. She is 25 kg lighter but wins, because she sits further out.\n- Law of the lever (Archimedes, about 250 BC): the plank balances when m₁·d₁ = m₂·d₂. Here she would need to weigh 53.3 kg.\n- The plank's own weight acts at the pivot, so it adds no torque either way.\n- The riders sit above the plank, so once it tilts the lower rider's lever arm grows and the higher one's shrinks. A perfectly balanced seesaw is an unstable equilibrium: any small difference makes it tip.\n\nTry it: set Her Mass to 53.5 kg and reset (R) to see it tip ever so slowly. Then try making him heavier.",
-  code: stage('0x3f6b2a') + helpers + `
+  code: stage('0x4d6146') + helpers + `
     world.gravity.set(0, -9.81, 0);
     world.allowSleep = false;  // Slow, nearly balanced motion must not be frozen by sleeping bodies
     world.solver.iterations = 40;
@@ -29,7 +29,7 @@ export const SEESAW: SimulationData = {
     const SEAT_TOP = THICK / 2 + 0.05;  // Seat pads stand 5 cm proud of the plank
 
     // Steel A-frame and axle
-    const steel = new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.6, roughness: 0.35 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x4f7a8c, metalness: 0.6, roughness: 0.35 });
     const tube = (a, b, r) => {
         const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b);
         const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, from.distanceTo(to), 16), steel);
@@ -246,8 +246,8 @@ export const CRATE_PUSH: SimulationData = {
             const s = state();
             const pushingNow = s.phase !== 'stopping' && s.phase !== 'stopped';
             if (pushingNow) {
-                // Feet keep pace with the floor: the walk cycle advances with the distance covered
-                h.play('Walk', (crate.position.x - X0) / 1.3 * 1.033);
+                // Feet keep pace with the floor: the stride advances with the distance covered (about 1.4 m a cycle)
+                h.setPose('walk', { time: (crate.position.x - X0) / 1.4 * 1.05, face: 'effort' });
                 // The harder he pushes, the further he leans into it
                 const lean = 0.2 + 0.4 * Math.min(1, s.push / 600);
                 h.aim('Spine', [0, 1, lean]);
@@ -259,7 +259,7 @@ export const CRATE_PUSH: SimulationData = {
                     h.aim(side + 'Hand', [0, 0.8, 0.6]);   // Palms flat on the crate
                 });
             } else {
-                h.play('Idle', s.t);
+                h.setPose('stand', { time: s.t });
             }
             // Stand so the palms rest on the crate's back face (he lets go at the end and stays put)
             const face = Math.min(crate.position.x, X_END) - HALF[0];
@@ -268,6 +268,7 @@ export const CRATE_PUSH: SimulationData = {
         }
     });
     man.object.rotation.y = Math.PI / 2;
+    man.object.position.x = X0 - HALF[0] - 0.45;   // Where he stands at the start, so the opening shot includes him
 
     const NOTES = {
         static: 'Static friction grows to match his push exactly, so nothing moves until the push passes μs·N.',
