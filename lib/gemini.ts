@@ -97,6 +97,8 @@ async function withModels<T>(ai: GoogleGenAI, run: (model: string, ai: GoogleGen
       } catch (error: any) {
         console.warn(`Gemini model ${model} failed:`, error);
         lastError = error;
+        // Out of credits, or the server's daily AI limit: the same on every model and every key
+        if (statusOf(error) === 402 || /SERVER_DAILY_LIMIT|ASSISTANT_LIMIT|NO_DEVICE/.test(messageOf(error))) throw error;
         if (isKeyError(error)) throw new KeyUnusable(error);   // Same on every model: try the next key
         if (isQuotaError(error)) { quotaFailures++; continue; } // Quotas are per model: try the next one
         // A malformed request fails the same way on every model and every key

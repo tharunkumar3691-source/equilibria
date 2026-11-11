@@ -1,0 +1,35 @@
+# Render Blueprint: deploys Equilibria as one Node web service (the built page, the API and the Gemini proxy).
+# In Render: New > Blueprint, pick this repository, then fill in the secret values it asks for.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: equilibria
+    runtime: node
+    # A paid instance keeps the app awake for judges (no cold start) and allows the disk below, so credit
+    # balances and PayPal orders survive restarts. On the free plan, delete the disk block and DATA_DIR:
+    # it still works, but balances reset whenever the instance restarts.
+    plan: starter
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/credits
+    disk:
+      name: equilibria-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATA_DIR
+        value: /var/data
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      # Optional: the id of a sandbox webhook pointing at https://<your-app>.onrender.com/api/paypal/webhook
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      # A last guard on the Gemini bill: requests per day for the whole server
+      - key: DAILY_GEMINI_CALL_CAP
+        value: "3000"

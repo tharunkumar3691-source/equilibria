@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { createGeminiProxy, geminiKeys } from './geminiProxy.ts';
+import { createApi } from './api.ts';
 
 try { process.loadEnvFile('.env.local'); } catch {} // Optional: the host's environment may set the keys instead
 
@@ -16,8 +16,7 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
 
-const keys = geminiKeys(process.env);
-const proxy = createGeminiProxy(keys);
+const { middleware: proxy, keys, paypalReady, webhookReady } = createApi(process.env);
 
 // A file from dist/, or index.html for any other page address
 async function serveStatic(pathname: string): Promise<{ file: string; data: Buffer }> {
@@ -43,5 +42,5 @@ createServer((req, res) => {
     }
   });
 }).listen(PORT, () => {
-  console.log(`Equilibria on http://localhost:${PORT} (${keys.length} Gemini key${keys.length === 1 ? '' : 's'})`);
+  console.log(`Equilibria on http://localhost:${PORT} (${keys.length} Gemini key${keys.length === 1 ? '' : 's'}, PayPal sandbox ${paypalReady ? `ready${webhookReady ? ' with webhook' : ''}` : 'not configured'})`);
 });

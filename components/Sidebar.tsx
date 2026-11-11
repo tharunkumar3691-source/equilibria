@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Video, Info, Sparkles, HelpCircle, X, PenLine, Wand2, BookMarked, Save, Link2, Download, FolderOpen, Trash2, Play, ThumbsUp, ThumbsDown, Gem, BookOpen, Compass, NotebookPen, ImagePlus, Sigma } from 'lucide-react';
+import { Upload, Video, Info, Sparkles, HelpCircle, X, PenLine, Wand2, BookMarked, Save, Link2, Download, FolderOpen, Trash2, Play, ThumbsUp, ThumbsDown, Gem, BookOpen, Compass, NotebookPen, ImagePlus, Sigma, Coins } from 'lucide-react';
 import { Wordmark } from './Logo';
 import { LibraryEntry, SimulationData } from '../types';
 import { DemoScenario } from '../lib/demos';
@@ -19,6 +19,8 @@ interface SidebarProps {
   demos: DemoScenario[];
   activeDemoId: string | null;
   apiKeyAvailable: boolean;
+  credits: number | null;          // Scene credits left (null until the server answers)
+  onOpenCredits: () => void;
   error?: string | null;
   library: LibraryEntry[];
   onSave: (name: string) => void;
@@ -67,6 +69,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   demos,
   activeDemoId,
   apiKeyAvailable,
+  credits,
+  onOpenCredits,
   error,
   library,
   onSave,
@@ -206,6 +210,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className={panel} data-tour="create">
         <div className="flex items-center justify-between mb-3">
             <span className={panelTitle}><Wand2 className="w-3.5 h-3.5 text-blue-300" /> Create</span>
+            {apiKeyAvailable && credits !== null && (
+                <button
+                    onClick={onOpenCredits}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${credits > 0 ? 'text-amber-200 border-amber-300/20 bg-amber-400/[0.06] hover:bg-amber-400/[0.12]' : 'text-amber-100 border-amber-300/40 bg-amber-400/15 hover:bg-amber-400/25'}`}
+                    title="Each new scene or solved problem uses 1 credit. Buy more with PayPal."
+                    data-tour="credits"
+                >
+                    <Coins className="w-3 h-3" />
+                    <span className="tabular-nums">{credits}</span> {credits === 1 ? 'credit' : 'credits'}
+                    <span className="text-amber-300/70">·</span> {credits > 0 ? 'Get more' : 'Buy'}
+                </button>
+            )}
         </div>
         <div className="flex gap-1 p-1 mb-3 rounded-xl bg-black/20">
             {tab('problem', <NotebookPen className="w-3.5 h-3.5" />, 'Problem')}

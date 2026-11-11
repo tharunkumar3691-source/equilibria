@@ -3,11 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server/index.ts"
+    "start": "node server/index.ts",
+    "test": "node server/api.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.33.0",

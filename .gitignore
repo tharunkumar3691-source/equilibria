@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 .env
+
+# Credit balances and PayPal order records (server/credits.ts)
+data/
+
+# Personal hackathon notes (form answers, video script) and the raw demo recording
+submission/
+demo-video/
 .claude/settings.local.json
 
 # Archives of the project

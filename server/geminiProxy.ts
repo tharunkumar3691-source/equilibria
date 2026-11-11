@@ -41,8 +41,11 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+// Decides whether one request may use Gemini (server/api.ts: credits and passes). Without it, every request may.
+export type Authorize = (req: IncomingMessage) => { ok: true } | { ok: false; status: number; reason: string; message: string };
+
 // Connect-style middleware: handles /api/gemini/..., passes everything else to next()
-export function createGeminiProxy(keys: string[]) {
+export function createGeminiProxy(keys: string[], authorize?: Authorize) {
   return async (req: IncomingMessage, res: ServerResponse, next?: () => void) => {
     const url = new URL(req.url || '/', 'http://localhost');
     if (!url.pathname.startsWith(PROXY_PREFIX + '/')) { next?.(); return; }
@@ -59,6 +62,11 @@ export function createGeminiProxy(keys: string[]) {
     if (!key) {
       sendError(res, 401, 'UNAUTHENTICATED', 'No Gemini API key is set on the server for this slot. Add GEMINI_API_KEY to .env.local and restart the server.');
       return;
+    }
+    // countTokens costs nothing, so only generation is metered
+    if (authorize && !path.endsWith(':countTokens')) {
+      const verdict = authorize(req);
+      if (verdict.ok === false) { sendError(res, verdict.status, verdict.reason, verdict.message); return; }
     }
 
     let body: Buffer;

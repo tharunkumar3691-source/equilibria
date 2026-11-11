@@ -26,7 +26,14 @@ const SUGGESTIONS = [
   'Make gravity like the Moon',
   'Make everything bouncier',
   'Change the floor to ice',
-  'Why does it move like this?'
+  'Why does it move like this?',
+  'I need credits for my class'
+];
+// With no scene open, the assistant can still explain physics and handle credits (lib/paymentAgent.ts)
+const START_SUGGESTIONS = [
+  'How many credits do I have?',
+  'Get credits for my class of 30',
+  'Sponsor scenes for students who cannot pay'
 ];
 
 export const ChatAssistant: React.FC<ChatAssistantProps> = ({ editor, simulationData, isOpen, onOpenChange, showLauncher }) => {
@@ -141,9 +148,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({ editor, simulation
 
           {/* Ideas, then the input */}
           <div className="border-t border-white/[0.05]">
-            {simulationData && !busy && (
+            {!busy && (
               <div className="flex gap-1.5 px-4 pt-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {SUGGESTIONS.map(s => (
+                {(simulationData ? SUGGESTIONS : START_SUGGESTIONS).map(s => (
                   <button
                     key={s}
                     onClick={() => send(s)}
@@ -161,7 +168,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({ editor, simulation
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && send(input)}
-                placeholder={simulationData ? "Ask a question, or add, remove or change something…" : "Ask about physics or simulations"}
+                placeholder={simulationData ? "Ask a question, or add, remove or change something…" : "Ask about physics, or about credits"}
                 aria-label="Message the AI"
                 className="flex-1 min-w-0 bg-slate-950/40 border border-slate-700/80 rounded-full px-4 py-2 text-[13px] text-slate-100 placeholder:text-slate-500 focus:outline-hidden focus:border-blue-400/50 transition-colors"
               />

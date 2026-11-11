@@ -18,6 +18,9 @@ import { Play, AlertCircle, Menu, Check, ShieldAlert, Sigma } from 'lucide-react
 import { LogoMark, Wordmark } from './components/Logo';
 import { AiCommandBar } from './components/AiCommandBar';
 import { useSceneEditor } from './lib/useSceneEditor';
+import { Balance, CreditError, CreditStatus, finishGeneration, loadCredits, PreparedOrder, spendCredit } from './lib/credits';
+import { BALANCE_EVENT, CHECKOUT_EVENT } from './lib/paymentAgent';
+import { CreditsDialog, CreditsRequest } from './components/CreditsDialog';
 
 const MAX_VIDEO_BYTES = 20 * 1024 * 1024;   // The analysis request carries the clip inline; larger ones are rejected
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;   // Photos of problems are scaled down before they are sent
@@ -150,9 +153,32 @@ export default function App() {
   // Read once, before the share-link effect below clears the address bar
   const [arrivedByLink] = useState(() => !!readSharePayload());
 
+  // Credits for generating scenes (server/credits.ts); the dialog is open while buying them
+  const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+  const [creditsOpen, setCreditsOpen] = useState<CreditsRequest | null>(null);
+  const applyBalance = (balance?: Balance) => {
+    if (balance) setCreditStatus(prev => (prev ? { ...prev, ...balance } : prev));
+  };
+
   useEffect(() => {
     // The keys stay on the server; it only says whether it has any
     loadKeyCount().then(count => setApiKeyAvailable(count > 0));
+    loadCredits().then(setCreditStatus).catch(err => console.warn('[credits] Could not load the balance:', err));
+  }, []);
+
+  // The assistant's payment tools (lib/paymentAgent.ts): a new balance to show, or a PayPal order to approve
+  useEffect(() => {
+    const onBalance = (e: Event) => applyBalance((e as CustomEvent<Balance>).detail);
+    const onCheckout = (e: Event) => {
+      setMenuOpen(false);
+      setCreditsOpen({ reason: 'browse', order: (e as CustomEvent<PreparedOrder>).detail });
+    };
+    window.addEventListener(BALANCE_EVENT, onBalance);
+    window.addEventListener(CHECKOUT_EVENT, onCheckout);
+    return () => {
+      window.removeEventListener(BALANCE_EVENT, onBalance);
+      window.removeEventListener(CHECKOUT_EVENT, onCheckout);
+    };
   }, []);
 
   // Each scene shows the rating it was given before
@@ -212,7 +238,35 @@ export default function App() {
   }, []);
 
   // Runs one generation and reports its real progress
+  // Each generation first takes a credit (none left: the credits dialog opens instead), and gives it back if it fails
   const runGeneration = async (kind: 'video' | 'text' | 'problem', video: string | null, generate: (onStage: (stage: GenerationStage, detail?: string) => void) => Promise<SimulationData>) => {
+    let pass: string;
+    try {
+      const spent = await spendCredit(kind);
+      pass = spent.pass;
+      applyBalance(spent);
+    } catch (err) {
+      if (err instanceof CreditError && err.code === 'NO_CREDITS') {
+        applyBalance(err.balance);
+        setMenuOpen(false);
+        setCreditsOpen({ reason: 'empty' });
+      } else {
+        setError(errorText(err));
+      }
+      if (video) URL.revokeObjectURL(video);
+      return;
+    }
+    const finish = async (ok: boolean): Promise<boolean> => {
+      try {
+        const result = await finishGeneration(pass, ok);
+        applyBalance(result);
+        return result.refunded;
+      } catch (err) {
+        console.warn('[credits] Could not close the generation:', err);
+        return false;
+      }
+    };
+
     const request = ++requestRef.current;
     setLoading(true);
     setError(null);
@@ -232,13 +286,19 @@ export default function App() {
           return { kind, stage, detail, startedAt, history: history[history.length - 1] === stage ? history : [...history, stage] };
         });
       });
+      finish(true);
       if (request !== requestRef.current) return;
       setSimulationData(data);
     } catch (err: any) {
+      const refund = finish(false);
       if (request !== requestRef.current) return;
       console.error("Simulation generation failed:", err);
       setError(errorText(err));
       setSourceVideo(null);
+      // Verified or free: a generation that did not produce a checked scene costs nothing
+      refund.then(refunded => {
+        if (refunded && request === requestRef.current) setError(text => (text ? `${text} Your credit was returned.` : text));
+      });
     } finally {
       if (request === requestRef.current) {
         setLoading(false);
@@ -444,6 +504,8 @@ export default function App() {
             demos={DEMOS}
             activeDemoId={activeDemoId}
             apiKeyAvailable={apiKeyAvailable}
+            credits={creditStatus?.credits ?? null}
+            onOpenCredits={() => { setMenuOpen(false); setCreditsOpen({ reason: 'browse' }); }}
             error={error}
             library={library}
             onSave={handleSave}
@@ -630,6 +692,18 @@ export default function App() {
 
       {showHelp && <ShortcutsDialog onClose={() => setShowHelp(false)} onStartTour={() => { setShowHelp(false); setShowTour(true); }} />}
       {showTour && <Tour onClose={closeTour} />}
+      {creditsOpen && (
+        <CreditsDialog
+          status={creditStatus}
+          request={creditsOpen}
+          onBalance={applyBalance}
+          onPaid={(balance, added, purpose) => {
+            applyBalance(balance);
+            if (added) setNotice(purpose === 'pool' ? `${added} credits given to the student pool. Thank you!` : `${added} credits added. Thank you!`);
+          }}
+          onClose={() => setCreditsOpen(null)}
+        />
+      )}
 
       {/* Floating Chat Assistant */}
       <ChatAssistant

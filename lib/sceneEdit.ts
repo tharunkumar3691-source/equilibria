@@ -7,6 +7,7 @@ import { GoogleGenAI, Chat, Type, FunctionDeclaration, ThinkingLevel } from '@go
 import { SimulationData } from '../types';
 import { withModelFallback, normalizeSimulation, REQUEST_TIMEOUT_MS, SCENE_KIT_GUIDE } from './gemini';
 import { checkSimulation, problemsOf } from './validate';
+import { PAYMENT_INSTRUCTION, PAYMENT_TOOL_NAMES, PAYMENT_TOOLS, runPaymentTool } from './paymentAgent';
 
 export interface ChatTurn {
   role: 'user' | 'model';
@@ -138,7 +139,9 @@ START MODE: "click" freezes the scene until the user clicks (one-off events: a r
 If the app tells you your change was rejected (an edit did not match the code, or the result failed its automatic
 test), call update_simulation again. Your rejected change was NOT applied, so write your edits against the original
 current code again. Fix exactly the problems listed and keep the change the user asked for.
-`;
+${PAYMENT_INSTRUCTION}`;
+// Payment tool rounds in one turn (check the balance, then buy), so a confused model cannot loop
+const MAX_PAYMENT_ROUNDS = 4;
 
 // The scene's explanation, with this change added to a running list of what was changed in the chat
 function withChangeNote(explanation: string, summary: string): string {
@@ -160,7 +163,7 @@ export async function chatTurn(scene: SimulationData | null, history: ChatTurn[]
 
   const prompt = scene
     ? `CURRENT SCENE${scene.title ? ` ("${scene.title}")` : ''}:\n\`\`\`javascript\n${scene.code}\n\`\`\`\n\nCurrent sliders: ${JSON.stringify(scene.sliders)}\nCurrent start mode: ${scene.startMode || 'auto'}\n\nThe user says: ${message}`
-    : `There is no simulation open yet, so you can only answer questions (suggest a demo, or describing a scene in the Create panel).\n\nThe user says: ${message}`;
+    : `There is no simulation open yet, so you can only answer questions (suggest a demo, or describing a scene in the Create panel) and help with credits.\n\nThe user says: ${message}`;
 
   onStage('thinking');
   return withModelFallback(async (model: string, ai: GoogleGenAI): Promise<EditOutcome> => {
@@ -169,7 +172,7 @@ export async function chatTurn(scene: SimulationData | null, history: ChatTurn[]
       model,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        tools: scene ? [{ functionDeclarations: [UPDATE_TOOL] }] : undefined,
+        tools: [{ functionDeclarations: scene ? [UPDATE_TOOL, ...PAYMENT_TOOLS] : PAYMENT_TOOLS }],
         httpOptions: { timeout: REQUEST_TIMEOUT_MS },
         ...(thinking ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } : {})
       },
@@ -187,7 +190,18 @@ export async function chatTurn(scene: SimulationData | null, history: ChatTurn[]
       chat = makeChat(false);
       response = await chat.sendMessage({ message: prompt });
     }
-    for (let attempt = 0; ; attempt++) {
+    let attempt = 0;
+    for (let paymentRounds = 0; ; ) {
+      // Payment tools run first; their results go back to the model, which then answers or acts again
+      const paymentCalls = (response.functionCalls || []).filter(c => c.name && PAYMENT_TOOL_NAMES.includes(c.name));
+      if (paymentCalls.length && paymentRounds < MAX_PAYMENT_ROUNDS) {
+        paymentRounds++;
+        const parts = [];
+        for (const c of paymentCalls) parts.push({ functionResponse: { name: c.name, response: await runPaymentTool(c.name!, c.args || {}) } });
+        response = await chat.sendMessage({ message: parts });
+        continue;
+      }
+
       const call = response.functionCalls && response.functionCalls.find(c => c.name === 'update_simulation');
       if (!call || !scene) {
         const text = (response.text || '').trim();
@@ -235,6 +249,7 @@ export async function chatTurn(scene: SimulationData | null, history: ChatTurn[]
         };
       }
       // Hand the problems back to the model as the tool's result, and ask for the corrected scene
+      attempt++;
       onStage('repairing');
       response = await chat.sendMessage({
         message: [{
