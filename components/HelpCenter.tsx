@@ -185,7 +185,7 @@ export const Tour: React.FC<TourProps> = ({ onClose }) => {
       {rect ? (
         <div
           className="absolute rounded-2xl ring-1 ring-blue-300/60 pointer-events-none transition-all duration-500 ease-out"
-          style={{ left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(10, 16, 18, 0.72), 0 0 24px rgba(134, 203, 191, 0.25)' }}
+          style={{ left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(9, 6, 20, 0.72), 0 0 24px rgba(185, 160, 255, 0.3)' }}
         ></div>
       ) : (
         <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs"></div>

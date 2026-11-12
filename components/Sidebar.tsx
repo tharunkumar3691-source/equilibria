@@ -193,13 +193,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // The menu bar, built from what the app can do right now
   const sections: MenuItem[] = [
-    { id: 'create', label: 'Create', icon: Wand2, accent: '#67b5a8', tour: 'create',
+    { id: 'create', label: 'Create', icon: Wand2, accent: '#9f7bff', tour: 'create',
       hint: 'Solve a textbook problem, or turn a video or a sentence into a 3D scene', onSelect: () => show('create') },
-    { id: 'demos', label: 'Demos', icon: Compass, accent: '#7fb8d1', tour: 'demos', badge: demos.length,
+    { id: 'demos', label: 'Demos', icon: Compass, accent: '#d084e6', tour: 'demos', badge: demos.length,
       hint: 'Ready-made scenes that load instantly, free', onSelect: () => show('demos') },
-    { id: 'library', label: 'Library', icon: BookMarked, accent: '#ab9edb', tour: 'library', badge: library.length || undefined,
+    { id: 'library', label: 'Library', icon: BookMarked, accent: '#8f99ee', tour: 'library', badge: library.length || undefined,
       hint: 'Save, share, export and open your simulations', onSelect: () => show('library') },
-    { id: 'about', label: 'Scene', icon: BookOpen, accent: '#86bb90',
+    { id: 'about', label: 'Scene', icon: BookOpen, accent: '#f2a7c3',
       dot: loading ? 'busy' : error ? 'alert' : unseen ? 'new' : undefined,
       hint: loading ? (loadingLabel || 'Working on it…') : simulationData ? `About "${simulationData.title || 'this scene'}", and how it turned out` : 'What happens in the scene, and why',
       onSelect: () => show('about') },
@@ -212,7 +212,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       hint: credits > 0 ? `${credits} ${credits === 1 ? 'credit' : 'credits'} left. Buy more, or gift some to students, with PayPal.` : 'No credits left: get more with PayPal',
       onSelect: onOpenCredits, onPointerEnter: onWarmCredits });
   }
-  actions.push({ id: 'help', label: 'Help', icon: HelpCircle, accent: '#a3cde0',
+  actions.push({ id: 'help', label: 'Help', icon: HelpCircle, accent: '#b3bbf6',
     hint: 'Shortcuts, tour and help ( ? )', onSelect: onOpenHelp });
   const current = sections.find(s => s.active) ?? sections[0];
 

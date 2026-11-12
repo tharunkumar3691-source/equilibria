@@ -44,7 +44,7 @@ export interface HeadlessScene {
 export function buildHeadless(data: SimulationData, options: { realHumans?: boolean; aspect?: number; stepSize?: number } = {}): HeadlessScene {
   const stepSize = options.stepSize ?? STEP;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x141c1e); // The live view's backdrop (components/PhysicsRunner.tsx)
+  scene.background = new THREE.Color(0x151027); // The live view's backdrop (components/PhysicsRunner.tsx)
   scene.fog = new THREE.Fog(0x0f172a, 20, 100);
   const camera = new THREE.PerspectiveCamera(45, options.aspect ?? 16 / 9, 0.1, 1000);
   camera.position.copy(DEFAULT_CAMERA);

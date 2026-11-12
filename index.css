@@ -3,23 +3,25 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Equilibria's palette. Tailwind's own colour names are redefined, so every component speaks the
-   same calm language: muted blue-green greys, a sage-teal accent, warm sand, soft lavender and a
-   dusty rose in place of alarm red. Low saturation and gentle contrast keep the eye at rest. */
+   same language: a violet-purple night. Greys carry a purple tint, the accent is violet, with orchid
+   and periwinkle beside it; sage green, warm gold and dusty rose stay for success, prices and alerts. */
 @theme {
-  --color-slate-50: #f4f7f6; --color-slate-100: #e6ecea; --color-slate-200: #cdd7d4; --color-slate-300: #aebcb8;
-  --color-slate-400: #8c9c98; --color-slate-500: #6d7d7a; --color-slate-600: #556361; --color-slate-700: #3e4a49;
-  --color-slate-800: #2a3434; --color-slate-900: #1b2324; --color-slate-950: #111819;
+  --color-slate-50: #f6f4fb; --color-slate-100: #ebe7f5; --color-slate-200: #d6cfe8; --color-slate-300: #b9afd2;
+  --color-slate-400: #9a8fb8; --color-slate-500: #7b7099; --color-slate-600: #5f5579; --color-slate-700: #463e5d;
+  --color-slate-800: #2f2943; --color-slate-900: #1f1a30; --color-slate-950: #151124;
 
-  /* The accent: a still lagoon */
-  --color-blue-50: #eef8f6; --color-blue-100: #d5efea; --color-blue-200: #ade0d6; --color-blue-300: #86cbbf;
-  --color-blue-400: #67b5a8; --color-blue-500: #4f9c90; --color-blue-600: #3f8277; --color-blue-700: #356a62;
-  --color-blue-800: #2d5550; --color-blue-900: #264642; --color-blue-950: #132826;
+  /* The accent: violet */
+  --color-blue-50: #f4f0ff; --color-blue-100: #e9e0ff; --color-blue-200: #d4c4ff; --color-blue-300: #b9a0ff;
+  --color-blue-400: #9f7bff; --color-blue-500: #8a5cf6; --color-blue-600: #7444e6; --color-blue-700: #5f35c4;
+  --color-blue-800: #4c2c9c; --color-blue-900: #3d267a; --color-blue-950: #241446;
 
-  --color-sky-100: #dcedf4; --color-sky-200: #bfdcea; --color-sky-300: #a3cde0; --color-sky-400: #7fb8d1;
-  --color-sky-500: #5f9fbc; --color-sky-600: #4c86a0;
+  /* Orchid */
+  --color-sky-100: #f7e6fb; --color-sky-200: #efcdf6; --color-sky-300: #e3aaf0; --color-sky-400: #d084e6;
+  --color-sky-500: #b964d3; --color-sky-600: #9a4cb5;
 
-  --color-cyan-200: #c4e6ea; --color-cyan-300: #a1d5db; --color-cyan-400: #7cc0c8; --color-cyan-500: #5ea7b0;
-  --color-cyan-600: #4b8c94;
+  /* Periwinkle */
+  --color-cyan-200: #d3d8fb; --color-cyan-300: #b3bbf6; --color-cyan-400: #8f99ee; --color-cyan-500: #7279e0;
+  --color-cyan-600: #5b5fc4;
 
   --color-emerald-100: #e2f0e4; --color-emerald-200: #cfe5d2; --color-emerald-300: #a9d1b0; --color-emerald-400: #86bb90;
   --color-emerald-500: #6aa276; --color-emerald-600: #548a61; --color-emerald-700: #43704e; --color-emerald-900: #22382a;
@@ -31,18 +33,19 @@
 
   --color-yellow-200: #f3e7c4; --color-yellow-300: #ead9a6; --color-yellow-400: #dcc584; --color-yellow-500: #c7ad66;
 
-  --color-violet-200: #ddd6f1; --color-violet-300: #c7bce8; --color-violet-400: #ab9edb; --color-violet-500: #9083c6;
-  --color-violet-600: #776ab0;
+  /* A deeper purple-magenta, so "violet" still stands apart from the accent */
+  --color-violet-200: #ecd5fb; --color-violet-300: #dcb4f7; --color-violet-400: #c88ef0; --color-violet-500: #ae6ae3;
+  --color-violet-600: #934fcb;
 
   --color-red-100: #f8e6e4; --color-red-200: #f1cfcb; --color-red-300: #e5aca6; --color-red-400: #d78d86;
   --color-red-500: #c4716b; --color-red-600: #a95b56; --color-red-700: #8a4945; --color-red-800: #6b3936;
   --color-red-900: #4a2826; --color-red-950: #2a1615;
 
-  --color-science-950: #0e1517; /* Deep background: night over still water */
-  --color-science-900: #141c1e;
-  --color-science-800: #1d2729;
-  --color-science-500: #4f9c90; /* Accent */
-  --color-science-100: #d5efea;
+  --color-science-950: #0d0a18; /* Deep background: a violet night */
+  --color-science-900: #151027;
+  --color-science-800: #1e1835;
+  --color-science-500: #8a5cf6; /* Accent */
+  --color-science-100: #e9e0ff;
 
   --color-sand-300: #e8cc96; --color-sand-400: #dcb676;
 
@@ -62,8 +65,8 @@
 
   :root { color-scheme: dark; }
   body {
-    background-color: #0e1517;
-    color: #e6ecea;
+    background-color: #0d0a18;
+    color: #ebe7f5;
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
   }
@@ -72,8 +75,8 @@
   button, a, input, textarea, select { transition-duration: 200ms; transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1); }
 
   /* Clear, soft focus for keyboard users */
-  :focus-visible { outline: 2px solid rgba(134, 203, 191, 0.7); outline-offset: 2px; border-radius: 8px; }
-  ::selection { background: rgba(103, 181, 168, 0.35); color: #f4f7f6; }
+  :focus-visible { outline: 2px solid rgba(185, 160, 255, 0.75); outline-offset: 2px; border-radius: 8px; }
+  ::selection { background: rgba(138, 92, 246, 0.4); color: #f6f4fb; }
 
   /* Quiet scrollbars */
   * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.1) transparent; }
@@ -89,13 +92,13 @@
 }
 
 @layer components {
-  /* The backdrop: three faint glows (lagoon, lavender, sand) that breathe very slowly,
+  /* The backdrop: three glows (violet, orchid, indigo) that breathe very slowly,
      about four breaths a minute, the pace of a resting breath */
   .bg-grid-pattern {
     background:
-      radial-gradient(1100px 620px at 12% -12%, rgba(103, 181, 168, 0.11), transparent 62%),
-      radial-gradient(900px 520px at 100% 4%, rgba(171, 158, 219, 0.075), transparent 60%),
-      radial-gradient(1100px 700px at 55% 125%, rgba(220, 182, 118, 0.06), transparent 62%);
+      radial-gradient(1100px 620px at 12% -12%, rgba(138, 92, 246, 0.2), transparent 62%),
+      radial-gradient(900px 520px at 100% 4%, rgba(185, 100, 211, 0.13), transparent 60%),
+      radial-gradient(1100px 700px at 55% 125%, rgba(91, 95, 196, 0.12), transparent 62%);
     animation: breathe 16s ease-in-out infinite;
   }
   /* While a simulation runs, the backdrop holds still: no work for the page beyond the scene itself */
@@ -103,10 +106,10 @@
 
   /* Frosted surfaces */
   .glass {
-    background: rgba(20, 28, 30, 0.62);
-    backdrop-filter: blur(14px) saturate(115%);
-    -webkit-backdrop-filter: blur(14px) saturate(115%);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(24, 18, 44, 0.62);
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    border: 1px solid rgba(196, 170, 255, 0.08);
     box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.55);
   }
 

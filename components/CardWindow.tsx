@@ -20,7 +20,7 @@ interface CardWindowProps {
 const TEST_CARD = '4012 8888 8888 1881';
 
 const FIELD_STYLE = {
-  input: { 'font-size': '16px', 'font-family': 'Inter, system-ui, sans-serif', color: '#1b2324', padding: '12px 14px' },
+  input: { 'font-size': '16px', 'font-family': 'Inter, system-ui, sans-serif', color: '#1f1a30', padding: '12px 14px' },
   '.invalid': { color: '#a95b56' },
 };
 
@@ -196,7 +196,7 @@ export const CardWindow: React.FC<CardWindowProps> = ({ paypal, price, credits, 
                 </div>
               </div>
             </div>
-            <div ref={fallback} style={{ colorScheme: 'light' }} className={mode === 'buttons' ? 'rounded-2xl bg-[#121718] border border-white/[0.08] p-2.5' : 'hidden'}></div>
+            <div ref={fallback} style={{ colorScheme: 'light' }} className={mode === 'buttons' ? 'rounded-2xl bg-[#140f24] border border-white/[0.08] p-2.5' : 'hidden'}></div>
           </div>
 
           {/* A tester needs PayPal's sandbox card, not a real one */}

@@ -3,8 +3,8 @@ import React from 'react';
 // Equilibria's mark: a ball at rest on a level line, inside a quiet orbit. Balance, held.
 export const LogoMark: React.FC<{ className?: string }> = ({ className = 'w-6 h-6' }) => (
   <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-    <circle cx="16" cy="16" r="11" fill="none" stroke="#86cbbf" strokeWidth="1.4" opacity="0.5" />
-    <path d="M4.5 19.5h23" stroke="#86cbbf" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="16" cy="16" r="11" fill="none" stroke="#b9a0ff" strokeWidth="1.4" opacity="0.5" />
+    <path d="M4.5 19.5h23" stroke="#b9a0ff" strokeWidth="1.6" strokeLinecap="round" />
     <circle cx="16" cy="15" r="4.2" fill="#e8cc96" />
   </svg>
 );

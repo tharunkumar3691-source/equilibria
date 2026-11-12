@@ -368,7 +368,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       azimuth: 45, 
       elevation: 60 
   });
-  const [bgColor, setBgColor] = useState('#141c1e');
+  const [bgColor, setBgColor] = useState('#151027');
 
   const inspectorRef = useRef<HTMLDivElement>(null);
   // The whole stage (toolbar, view, side panel, status line): what goes full screen
@@ -2525,7 +2525,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     <div
         ref={stageRef}
         className="w-full h-full flex flex-col"
-        style={isFullscreen ? { backgroundColor: '#0e1517' } : undefined}
+        style={isFullscreen ? { backgroundColor: '#0d0a18' } : undefined}
     >
       {/* Toolbar */}
       <div

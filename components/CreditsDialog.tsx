@@ -24,8 +24,8 @@ interface CreditsDialogProps {
 
 // How each pack looks: its own colours and icon, so the choice reads at a glance
 const PACK_LOOK: Record<string, { icon: React.ElementType; from: string; to: string; ring: string; text: string }> = {
-  starter: { icon: Zap, from: '#4f9c90', to: '#5f9fbc', ring: '#86cbbf', text: '#ade0d6' },
-  class: { icon: GraduationCap, from: '#9083c6', to: '#c99b57', ring: '#c7bce8', text: '#ddd6f1' },
+  starter: { icon: Zap, from: '#8a5cf6', to: '#b964d3', ring: '#b9a0ff', text: '#d4c4ff' },
+  class: { icon: GraduationCap, from: '#ae6ae3', to: '#c99b57', ring: '#dcb4f7', text: '#ecd5fb' },
 };
 const SPONSOR_LOOK = { from: '#c4716b', to: '#6aa276', ring: '#e5aca6', text: '#f1cfcb' };
 const lookOf = (id: string, sponsoring: boolean) => {
@@ -54,7 +54,7 @@ const CountUp: React.FC<{ value: number }> = ({ value }) => {
 };
 
 // A short shower of confetti in the app's colours: CSS only, a few dozen pieces, gone in under three seconds
-const CONFETTI_COLOURS = ['#86cbbf', '#e8cc96', '#c7bce8', '#e5aca6', '#a9d1b0', '#a3cde0'];
+const CONFETTI_COLOURS = ['#b9a0ff', '#e8cc96', '#dcb4f7', '#e5aca6', '#a9d1b0', '#b3bbf6'];
 const Confetti: React.FC = () => {
   const pieces = useMemo(() => Array.from({ length: 40 }, (_, i) => ({
     left: Math.random() * 100,
@@ -316,7 +316,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
           <div className="px-4 sm:px-8 pt-5 pb-6 space-y-5">
             {/* A student with none left: today's free share of the pool comes first */}
             {pool && canClaim && (
-              <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-2xl p-4 border border-emerald-300/30" style={{ background: 'linear-gradient(135deg, rgba(106,162,118,0.22), rgba(79,156,144,0.1))' }}>
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-2xl p-4 border border-emerald-300/30" style={{ background: 'linear-gradient(135deg, rgba(106,162,118,0.22), rgba(138,92,246,0.1))' }}>
                 <span className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-400/20"><Gift className="w-5 h-5 text-emerald-200" /></span>
                 <p className="min-w-0 flex-1 text-[15px] leading-snug text-slate-100">
                   <b className="font-semibold">Free for students.</b> Sponsors have left {plural(pool.credits, 'credit', 'credits')}; you can take {Math.min(pool.claimable, pool.credits)} today.
@@ -331,7 +331,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
             <div className="relative grid grid-cols-2 p-1.5 rounded-2xl bg-black/25 border border-white/[0.06]" role="tablist" aria-label="Who the credits are for">
               <span
                 className="absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] rounded-xl transition-all duration-300 ease-out"
-                style={{ left: sponsoring ? '50%' : '6px', background: sponsoring ? 'linear-gradient(135deg, rgba(196,113,107,0.5), rgba(106,162,118,0.4))' : 'linear-gradient(135deg, rgba(79,156,144,0.5), rgba(95,159,188,0.4))' }}
+                style={{ left: sponsoring ? '50%' : '6px', background: sponsoring ? 'linear-gradient(135deg, rgba(196,113,107,0.5), rgba(106,162,118,0.4))' : 'linear-gradient(135deg, rgba(138,92,246,0.5), rgba(185,100,211,0.4))' }}
                 aria-hidden="true"
               ></span>
               {([['self', 'For me', Coins], ['pool', 'Gift to students', HeartHandshake]] as const).map(([id, label, Icon]) => (
@@ -469,12 +469,12 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                 {/* Two ways to pay: PayPal's own button, and a card, which opens its own window. PayPal's
                     frame keeps a light colour scheme, as its page has, so the browser draws it transparent
                     over the dark panel instead of on a white box */}
-                <div className="rounded-2xl bg-[#121718] border border-white/[0.08] p-3 space-y-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]">
+                <div className="rounded-2xl bg-[#140f24] border border-white/[0.08] p-3 space-y-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]">
                   <div ref={holder} style={{ colorScheme: 'light' }} aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
                   <button
                     onClick={() => { setMessage(null); setCardOpen(true); }}
                     disabled={!sdk || phase !== 'ready'}
-                    className="w-full h-[50px] inline-flex items-center justify-center gap-2.5 rounded-full bg-[#2c3133] hover:bg-[#394043] border border-white/10 text-white text-[16px] font-semibold disabled:opacity-60"
+                    className="w-full h-[50px] inline-flex items-center justify-center gap-2.5 rounded-full bg-[#2f2943] hover:bg-[#3d3556] border border-white/10 text-white text-[16px] font-semibold disabled:opacity-60"
                   >
                     <CreditCard className="w-5 h-5" /> Debit or Credit Card
                   </button>
