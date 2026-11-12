@@ -111,7 +111,7 @@ const TOUR: TourStep[] = [
   {
     target: 'demos',
     title: 'Or start from a demo',
-    body: 'Twelve ready-made scenes, from Newton\'s cradle and trigonometry to a black hole and time dilation. They load instantly and need no account or key.'
+    body: 'Eleven ready-made scenes, from Newton\'s cradle and trigonometry to a black hole and time dilation. They load instantly and need no account or key.'
   },
   {
     target: 'library',

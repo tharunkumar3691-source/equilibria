@@ -205,7 +205,7 @@ export const Landing: React.FC<{ onEnter: () => void; leaving: boolean }> = ({ o
               </button>
             </div>
             <div className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-[#9a8fb8]">
-              {['12 free demo scenes', 'No sign-up', 'Every scene physics-tested'].map(item => (
+              {['11 free demo scenes', 'No sign-up', 'Every scene physics-tested'].map(item => (
                 <span key={item} className="inline-flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#86efac]" />{item}</span>
               ))}
             </div>

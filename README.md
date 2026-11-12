@@ -24,7 +24,7 @@ REST API, the PayPal JavaScript SDK and PayPal Webhooks (sandbox)**.
 | **Verified or free** | If a generated scene never passes its automatic physics test, the credit is returned by itself. |
 | **AI assistant that handles payments** | Tell the assistant "I need credits for my class of 30": it checks your balance, picks the right pack, creates the PayPal order and opens PayPal's window. You approve it there; nothing is charged until you do. |
 | **Pay it forward** | Anyone can buy credits for a shared student pool. A student who has run out (and cannot pay) can take a small share each day. |
-| **12 free demos** | Newton's cradle, domino spiral, solar system, black hole, time dilation, pendulum wave, loop-the-loop and more. |
+| **11 free demos** | Newton's cradle, domino spiral, solar system, black hole, time dilation, pendulum wave, loop-the-loop and more. |
 
 ## Who it is for
 

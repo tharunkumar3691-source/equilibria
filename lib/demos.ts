@@ -1,4 +1,4 @@
-import { Layers, CircleDot, Target, Orbit, Waves, RefreshCw, Blocks, Scale, Package, Disc3, TreePine, Hourglass, LucideIcon } from 'lucide-react';
+import { Layers, CircleDot, Target, Orbit, Waves, RefreshCw, Blocks, Scale, Disc3, TreePine, Hourglass, LucideIcon } from 'lucide-react';
 import { SimulationData } from '../types';
 import { SOLAR_SYSTEM } from './solarSystem';
 import { BLACK_HOLE } from './blackHole';
@@ -6,7 +6,7 @@ import { TREE_HEIGHT } from './trigDemos';
 import { TIME_DILATION } from './relativityDemos';
 import { stage } from './demoStage';
 import { PENDULUM_WAVE, LOOP_THE_LOOP, BLOCK_TOWER } from './moreDemos';
-import { SEESAW, CRATE_PUSH } from './humanDemos';
+import { SEESAW } from './humanDemos';
 
 export interface DemoScenario {
   id: string;
@@ -375,9 +375,7 @@ export const DEMOS: DemoScenario[] = [
   { id: 'tree-height', title: 'Tree Height', tagline: 'Trigonometry: measure a tree by its shadow, h = L tan θ', accent: '#9fcfa9', icon: TreePine, data: at(TREE_HEIGHT, { setting: 'none' }) },
   { id: 'black-hole', title: 'Black Hole', tagline: 'Gravity so strong that not even light escapes', accent: '#e2ae84', icon: Disc3, data: at(BLACK_HOLE, { setting: 'none' }) },
   { id: 'time-dilation', title: 'Time Dilation', tagline: 'The twin paradox: light clocks on a trip to Proxima Centauri', accent: '#a9bfe6', icon: Hourglass, data: at(TIME_DILATION, { setting: 'space' }) },
-  { id: 'seesaw', title: 'Seesaw Balance', tagline: 'A lighter rider further out beats a heavier one', accent: '#a3cba6', icon: Scale, data: at(SEESAW, { setting: 'park', upm: 1 }) },
-  { id: 'crate-push', title: 'Pushing a Crate', tagline: 'Static friction, breakaway and a steady push', accent: '#d8bd8a', icon: Package, data: at(CRATE_PUSH, { setting: 'warehouse', upm: 1 }) },
-  { id: 'bowling-strike', title: 'Bowling Strike', tagline: 'A neon lane, ten pins and one heavy ball', accent: '#e0a8a4', icon: Target, data: at(BOWLING_STRIKE, { setting: 'bowling-alley', upm: 4.5 }) },
+  { id: 'seesaw', title: 'Seesaw Balance', tagline: 'A lighter rider further out beats a heavier one', accent: '#a3cba6', icon: Scale, data: at(SEESAW, { setting: 'park', upm: 1 }) },  { id: 'bowling-strike', title: 'Bowling Strike', tagline: 'A neon lane, ten pins and one heavy ball', accent: '#e0a8a4', icon: Target, data: at(BOWLING_STRIKE, { setting: 'bowling-alley', upm: 4.5 }) },
   { id: 'pendulum-wave', title: 'Pendulum Wave', tagline: 'Twelve pendulums drift in and out of step', accent: '#86c9b8', icon: Waves, data: at(PENDULUM_WAVE, { setting: 'lab', realSize: 0.9 }) },
   { id: 'loop-the-loop', title: 'Loop the Loop', tagline: 'A ball rolls down a ramp and around a full loop', accent: '#d6aac8', icon: RefreshCw, data: at(LOOP_THE_LOOP, { setting: 'living-room', realSize: 1.1 }) },
   { id: 'block-tower', title: 'Block Tower', tagline: 'Click a block to push it out and see what holds', accent: '#e3b9a3', icon: Blocks, data: at(BLOCK_TOWER, { setting: 'study', realSize: 0.3 }) }

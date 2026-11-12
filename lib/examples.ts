@@ -15,8 +15,7 @@ const DEMO_KEYWORDS: Record<string, string[]> = {
   'pendulum-wave': ['pendulum', 'pendulums', 'wave', 'oscillation', 'oscillate', 'period', 'swing', 'harmonic'],
   'loop-the-loop': ['loop', 'track', 'roller', 'coaster', 'ramp', 'slope', 'incline', 'rolling', 'roll', 'marble', 'circular', 'centripetal'],
   'block-tower': ['jenga', 'tower', 'stack', 'stacked', 'blocks', 'block', 'balance', 'collapse', 'pile'],
-  'seesaw': ['seesaw', 'see-saw', 'teeter', 'lever', 'torque', 'balance', 'pivot', 'fulcrum', 'playground'],
-  'crate-push': ['push', 'pushing', 'pushes', 'friction', 'crate', 'box', 'slide', 'sliding', 'drag', 'static', 'kinetic', 'warehouse']
+  'seesaw': ['seesaw', 'see-saw', 'teeter', 'lever', 'torque', 'balance', 'pivot', 'fulcrum', 'playground']
 };
 
 const STOP = new Set(['the', 'and', 'with', 'from', 'into', 'onto', 'that', 'this', 'then', 'there', 'their', 'them', 'they', 'what', 'when', 'which',
