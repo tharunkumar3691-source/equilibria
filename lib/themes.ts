@@ -2,10 +2,10 @@
 // They replace only the sky, the floor colour and the lights, never the scene's own objects.
 import * as THREE from 'three';
 
-export type ThemeId = 'space' | 'nebula' | 'aurora' | 'sunset' | 'eclipse' | 'galaxy';
+export type ThemeId = 'dark' | 'space' | 'nebula' | 'aurora' | 'sunset' | 'eclipse' | 'galaxy';
 
-// The look every scene opens with, generated ones included
-export const DEFAULT_SCENE_THEME: ThemeId = 'space';
+// The look every scene opens with, generated ones included, and the one Realistic view always uses
+export const DEFAULT_SCENE_THEME: ThemeId = 'dark';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -50,6 +50,16 @@ function starDots(c: Ctx, seed: number, count: number, maxY = H) {
     const big = rand() < 0.06;
     c.fillStyle = `rgba(255,255,255,${0.3 + rand() * 0.6})`;
     c.fillRect(rand() * W, rand() * maxY, big ? 2 : 1, big ? 2 : 1);
+  }
+}
+
+// Dark: a plain deep navy-black night with a few faint stars, nothing coloured to pull the eye from the physics
+function paintDark(c: Ctx) {
+  gradient(c, [[0, '#04050b'], [0.45, '#080a16'], [1, '#04050a']]);
+  const rand = seeded(41);
+  for (let i = 0; i < 260; i++) {
+    c.fillStyle = `rgba(220,226,255,${0.12 + rand() * 0.3})`;
+    c.fillRect(rand() * W, rand() * H * 0.6, 1, 1);
   }
 }
 
@@ -159,6 +169,11 @@ function paintGalaxy(c: Ctx) {
 }
 
 const SPECS: Record<ThemeId, ThemeSpec> = {
+  dark: {
+    label: 'Dark', paint: paintDark, floor: '#12141f', fog: '#05060c',
+    swatch: 'radial-gradient(circle at 30% 30%, rgba(220,226,255,.5) 0 1px, transparent 2px), radial-gradient(circle at 70% 55%, rgba(220,226,255,.35) 0 1px, transparent 2px), linear-gradient(#04050b, #0a0c18)',
+    ambient: ['#c7d2fe', 0.34], sun: ['#ffffff', 1.9], stars: 500
+  },
   space: {
     label: 'Space', paint: paintSpace, floor: '#151729', fog: '#05040f',
     swatch: 'radial-gradient(ellipse 14% 5% at 80% 24%, #ffe9c4, transparent), radial-gradient(circle at 70% 40%, rgba(168,85,247,.6), transparent 45%), radial-gradient(circle at 30% 60%, rgba(59,130,246,.45), transparent 40%), #02010a',
