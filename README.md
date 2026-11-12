@@ -51,7 +51,7 @@ reaches the browser. **Sandbox only**: no real money moves.
 
 | AI | Where | What it does |
 |---|---|---|
-| GeminiDesigns each 3D scene as code, reviews pictures of what it built, and repairs problems the automatic physics test finds (up to 2 repairs). |
+| **Gemini, scene design** | [lib/gemini.ts](lib/gemini.ts) | Designs each 3D scene as code, reviews pictures of what it built, and repairs problems the automatic physics test finds (up to 2 repairs). |
 | **Gemini, problem solving** | [lib/problems.ts](lib/problems.ts) | Solves textbook problems step by step, builds a simulation independently, and reconciles the two when the measured answer disagrees. |
 | **Gemini, video understanding** | [lib/gemini.ts](lib/gemini.ts) | Measures motion in uploaded clips and rebuilds it. |
 | **Gemini function calling: scene editing** | [lib/sceneEdit.ts](lib/sceneEdit.ts) | The `update_simulation` tool rewrites the open scene; every change is tested headlessly before it is applied. |
