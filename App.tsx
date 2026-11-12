@@ -40,7 +40,7 @@ interface Progress {
 const STAGE_LABELS: Record<GenerationStage, string> = {
   reading: 'Reading your video',
   measuring: 'Measuring the motion in your video',
-  analysing: 'Designing the scene with Gemini',
+  analysing: 'Designing the scene',
   checking: 'Testing the physics',
   repairing: 'Fixing problems the test found',
   reviewing: 'Reviewing pictures of the scene',
@@ -69,10 +69,16 @@ const stagesFor = (progress: Progress): GenerationStage[] => {
 
 const QUALITY_KEY = 'simulaitor.quality';
 
+// Messages from the AI service can name its provider or models; people only ever see "the AI"
+const withoutProvider = (text: string): string => text
+  .replace(/\b(models\/)?gemini[\w.-]*/gi, 'the AI')
+  .replace(/\bGoogle( GenAI| AI)?\b/g, 'the AI service')
+  .replace(/GEMINI_API_KEY/g, 'the AI key');
+
 const errorText = (err: any): string => {
-  if (err instanceof Error) return err.message;
-  if (typeof err === 'object' && err !== null) return err.message || err.error?.message || JSON.stringify(err);
-  return String(err);
+  if (err instanceof Error) return withoutProvider(err.message);
+  if (typeof err === 'object' && err !== null) return withoutProvider(err.message || err.error?.message || JSON.stringify(err));
+  return withoutProvider(String(err));
 };
 
 // Step-by-step progress for a generation, driven by what the generator reports (not a timer)
@@ -111,7 +117,6 @@ const GenerationProgress: React.FC<{ progress: Progress }> = ({ progress }) => {
               </span>
               <span className="flex flex-col leading-tight">
                 <span className={`text-[13px] ${done ? 'text-slate-400' : active ? 'text-slate-50 font-medium' : 'text-slate-600'}`}>{stageLabel(progress.kind, stage)}</span>
-                {active && progress.detail && <span className="text-[11px] text-slate-500">{progress.detail}</span>}
               </span>
             </li>
           );

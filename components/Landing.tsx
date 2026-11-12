@@ -123,7 +123,7 @@ function useReveal(root: React.RefObject<HTMLDivElement | null>) {
 }
 
 const FEATURES = [
-  { icon: Sigma, title: 'Solve and simulate', text: 'Paste a textbook problem or a photo of one. Gemini solves it step by step, builds the scene without seeing the answer, then measures the answer in the simulation.' },
+  { icon: Sigma, title: 'Solve and simulate', text: 'Paste a textbook problem or a photo of one. It is solved step by step, the scene is built without seeing the answer, then measures the answer in the simulation.' },
   { icon: Video, title: 'Video to simulation', text: 'Upload a few seconds of real motion. It is measured and rebuilt as a live 3D scene you can replay and change.' },
   { icon: Sparkles, title: 'Describe a scene', text: '"A heavy ball rolls down a ramp into a stack of crates" becomes a running simulation in moments.' },
   { icon: MessageSquare, title: 'Change it by talking', text: 'Ask for Moon gravity or a heavier ball. Every edit is tested before it is applied.' },
@@ -133,7 +133,7 @@ const FEATURES = [
 
 const STEPS = [
   { n: '01', title: 'Ask', text: 'A problem, a sentence or a short video.' },
-  { n: '02', title: 'Built and tested', text: 'Gemini designs the scene; a physics test checks it and repairs what fails.' },
+  { n: '02', title: 'Built and tested', text: 'The scene is designed for you; a physics test checks it and repairs what fails.' },
   { n: '03', title: 'Explore', text: 'Pause, rewind, measure with the ruler and stopwatch, and change anything.' }
 ];
 
@@ -250,7 +250,7 @@ export const Landing: React.FC<{ onEnter: () => void; leaving: boolean }> = ({ o
         <section className="border-y border-[#ffffff]/[0.06] bg-[#ffffff]/[0.015]">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-[13px] text-[#7b7099]">
             <span className="uppercase tracking-[0.18em] text-[11px]">Powered by</span>
-            {['PayPal Orders v2 & Webhooks', 'Google Gemini', 'Three.js', 'cannon-es physics'].map(name => (
+            {['PayPal Orders v2 & Webhooks', 'Three.js', 'cannon-es physics'].map(name => (
               <span key={name} className="text-[#b9afd2] font-medium">{name}</span>
             ))}
           </div>
@@ -317,7 +317,7 @@ export const Landing: React.FC<{ onEnter: () => void; leaving: boolean }> = ({ o
             <ol className="relative space-y-3">
               {[
                 ['Buy credits with PayPal', 'Checkout in PayPal’s own window; nothing is charged until you approve.'],
-                ['Create a scene', 'One credit is held while Gemini builds and tests it.'],
+                ['Create a scene', 'One credit is held while the scene is built and tested.'],
                 ['Passes the test?', 'You keep exploring. If it never passes, the credit is returned automatically.']
               ].map(([title, text], i) => (
                 <li key={title} className="flex gap-4 rounded-2xl border border-[#ffffff]/[0.08] bg-[#07050f]/50 p-4">

@@ -54,13 +54,13 @@ export function createGeminiProxy(keys: string[], authorize?: Authorize) {
     // The page asks how many keys there are (never the keys themselves)
     if (path === '/status') { sendJson(res, 200, { keys: keys.length }); return; }
     if (req.method !== 'POST' || !ALLOWED_PATH.test(path)) {
-      sendError(res, 404, 'NOT_FOUND', 'This request is not available through the Gemini proxy.');
+      sendError(res, 404, 'NOT_FOUND', 'This request is not available.');
       return;
     }
     const slot = /^slot-(\d+)$/.exec(String(req.headers['x-goog-api-key'] || ''));
     const key = slot ? keys[Number(slot[1]) - 1] : undefined;
     if (!key) {
-      sendError(res, 401, 'UNAUTHENTICATED', 'No Gemini API key is set on the server for this slot. Add GEMINI_API_KEY to .env.local and restart the server.');
+      sendError(res, 401, 'UNAUTHENTICATED', 'Scene building is not set up on this server yet.');
       return;
     }
     // countTokens costs nothing, so only generation is metered
@@ -71,7 +71,7 @@ export function createGeminiProxy(keys: string[], authorize?: Authorize) {
 
     let body: Buffer;
     try { body = await readBody(req); } catch {
-      sendError(res, 413, 'INVALID_ARGUMENT', 'The request is too large for the Gemini proxy.');
+      sendError(res, 413, 'INVALID_ARGUMENT', 'The request is too large.');
       return;
     }
 
@@ -92,7 +92,7 @@ export function createGeminiProxy(keys: string[], authorize?: Authorize) {
       res.end();
     } catch (error: any) {
       if (abort.signal.aborted) return;
-      if (!res.headersSent) sendError(res, 502, 'UNAVAILABLE', `Could not reach Gemini: ${error?.message || error}`);
+      if (!res.headersSent) sendError(res, 502, 'UNAVAILABLE', `Could not reach the AI service: ${error?.message || error}`);
       else res.end();
     }
   };

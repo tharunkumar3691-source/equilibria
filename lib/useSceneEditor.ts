@@ -104,7 +104,7 @@ export function useSceneEditor(apiKeyAvailable: boolean, simulationData: Simulat
     const userMsg = text.trim();
     if (!userMsg || busyRef.current) return null;   // One request at a time
     if (!apiKeyAvailable) {
-      const reply = 'I need a Gemini key in .env.local before I can change scenes or answer questions. The demos all work without one.';
+      const reply = 'Changing scenes and answering questions is not set up on this server yet. The demos all work without it.';
       setMessages(prev => [...prev, { role: 'user', text: userMsg }, { role: 'model', text: reply }]);
       const result: LastResult = { kind: 'failed', text: reply };
       setLast(result);
@@ -146,9 +146,9 @@ export function useSceneEditor(apiKeyAvailable: boolean, simulationData: Simulat
       const reply = error instanceof ServerLimitError
         ? `${detail} Your scene is unchanged.`
         : /quota|exhausted|429/i.test(detail)
-        ? 'Your Gemini key is out of quota for now, so I could not make that change. Your scene is unchanged; try again a little later.'
+        ? 'The AI service is busy right now, so I could not make that change. Your scene is unchanged; try again a little later.'
         : /key|refused|401|403/i.test(detail)
-        ? 'Gemini refused the API key, so I could not make that change. Please check GEMINI_API_KEY in .env.local. Your scene is unchanged.'
+        ? 'The AI service could not be reached, so I could not make that change. Your scene is unchanged.'
         : "That didn't come through, probably because the service is busy. Your scene is unchanged; please try again in a moment.";
       setMessages(prev => [...prev, { role: 'model', text: reply }]);
       result = { kind: 'failed', text: reply };

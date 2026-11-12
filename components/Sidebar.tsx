@@ -628,7 +628,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {apiKeyAvailable && (
-            <div className="mt-3 flex items-start gap-2.5 cursor-pointer select-none" title="Uses Google's Pro models first. Slower, and a free key may have little or no Pro quota (it then falls back to the usual models).">
+            <div className="mt-3 flex items-start gap-2.5 cursor-pointer select-none" title="Uses the most capable AI first. Slower, and when it is busy the usual one takes over.">
                 <button
                     type="button"
                     role="switch"
@@ -649,7 +649,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {!apiKeyAvailable && (
              <div className="mt-3 text-[12px] text-amber-200/90 bg-amber-400/[0.07] p-2.5 rounded-xl border border-amber-300/15 flex items-start gap-2 leading-snug">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-px text-amber-300" />
-                <span>The demos are ready to explore. Creating new scenes needs a Gemini key in .env.local.</span>
+                <span>The demos are ready to explore. Creating new scenes is not set up on this server yet.</span>
              </div>
         )}
       </div>

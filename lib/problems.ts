@@ -570,7 +570,7 @@ function verdictOf(answers: ProblemAnswer[]): ProblemSolution['verdict'] {
 
 export async function solveAndSimulate(input: ProblemInput, options: GenerationOptions = {}): Promise<SimulationData> {
   if (!(await loadKeyCount())) {
-    throw new Error("No Gemini API key is set, so problems cannot be solved. Add GEMINI_API_KEY to .env.local, or open one of the built-in demos.");
+    throw new Error("Solving problems is not set up on this server yet. Open one of the built-in demos instead.");
   }
   input = { ...input, text: input.text.trim().slice(0, MAX_PROBLEM_LENGTH) };
   if (!input.text && !input.image) throw new Error('Type a problem or add a photo of one first.');

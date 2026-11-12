@@ -138,7 +138,7 @@ async function withModels<T>(ai: GoogleGenAI, run: (model: string, ai: GoogleGen
 // Runs a request with the active key, falling back across models and then across keys
 export async function withModelFallback<T>(run: (model: string, ai: GoogleGenAI) => Promise<T>, onAttempt?: (model: string) => void, chain: string[] = MODEL_CHAIN): Promise<T> {
   const count = await keyCountReady;
-  if (!count) throw new Error("No Gemini API key is set. Add GEMINI_API_KEY to .env.local.");
+  if (!count) throw new Error("Scene building is not set up on this server yet.");
   let lastError: any;
   for (let step = 0; step < count; step++) {
     const index = (activeKey + step) % count;
@@ -156,7 +156,8 @@ export async function withModelFallback<T>(run: (model: string, ai: GoogleGenAI)
       lastError = error.cause;
     }
   }
-  throw new Error(`Every Gemini API key is out of free quota or was refused (${count} tried). ${messageOf(lastError)}`);
+  console.warn('Every key is out of quota or was refused:', lastError);
+  throw new Error(`The AI service is busy or out of its daily quota right now. Please try again a little later.`);
 }
 
 // One request with an explicit thinking level, so the model reasons through the plan before it answers.
@@ -753,7 +754,7 @@ export async function reviewScene(ctx: SceneContext, options: GenerationOptions,
 // then shows pictures of it to the model for a final improvement. The best version that runs is kept.
 async function generateChecked(source: GenerationSource, options: GenerationOptions): Promise<SimulationData> {
   if (!(await loadKeyCount())) {
-    throw new Error("No Gemini API key is set, so new scenes cannot be generated. Add GEMINI_API_KEY to .env.local, or open one of the built-in demos.");
+    throw new Error("Creating new scenes is not set up on this server yet. Open one of the built-in demos instead.");
   }
 
   const ctx: SceneContext = {
