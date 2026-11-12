@@ -182,8 +182,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => { if (loading && section === 'create') show('about'); }, [loading]);
   // A problem with a request is explained under Scene
   useEffect(() => { if (error && section === 'create') show('about'); }, [error]);
-  // A scene that arrives while another section is open gets a dot on Scene until it is looked at
-  useEffect(() => { if (simulationData && section !== 'about') setUnseen(true); }, [simulationData]);
+  // Opening a demo (from Demos or the welcome screen) shows its description at once; any other scene that
+  // arrives while another section is open gets a dot on Scene until it is looked at
+  useEffect(() => {
+    if (!simulationData || section === 'about') return;
+    if (activeDemoId) show('about');
+    else setUnseen(true);
+  }, [simulationData]);
   useEffect(() => { if (section === 'about') setUnseen(false); }, [section]);
 
   // The menu bar, built from what the app can do right now
