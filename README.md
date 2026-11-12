@@ -7,8 +7,8 @@ simulation that has been **checked before you see it**. Students pause it, rewin
 by talking to it. New scenes are paid for with **PayPal** credits, and you only pay for physics that checks out:
 a scene that never passes its physics test gives its credit back.
 
-Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com). It uses the **PayPal Orders v2
-REST API, the PayPal JavaScript SDK and PayPal Webhooks (sandbox)** together with **Google Gemini**.
+It uses the **PayPal Orders v2
+REST API, the PayPal JavaScript SDK and PayPal Webhooks (sandbox)**.
 
 ---
 
@@ -51,7 +51,7 @@ reaches the browser. **Sandbox only**: no real money moves.
 
 | AI | Where | What it does |
 |---|---|---|
-| **Gemini** (Flash models, Pro in "best quality" mode, with automatic fallback between models and keys) | [lib/gemini.ts](lib/gemini.ts) | Designs each 3D scene as code, reviews pictures of what it built, and repairs problems the automatic physics test finds (up to 2 repairs). |
+| GeminiDesigns each 3D scene as code, reviews pictures of what it built, and repairs problems the automatic physics test finds (up to 2 repairs). |
 | **Gemini, problem solving** | [lib/problems.ts](lib/problems.ts) | Solves textbook problems step by step, builds a simulation independently, and reconciles the two when the measured answer disagrees. |
 | **Gemini, video understanding** | [lib/gemini.ts](lib/gemini.ts) | Measures motion in uploaded clips and rebuilds it. |
 | **Gemini function calling: scene editing** | [lib/sceneEdit.ts](lib/sceneEdit.ts) | The `update_simulation` tool rewrites the open scene; every change is tested headlessly before it is applied. |
@@ -111,7 +111,7 @@ free up to a daily number per visitor, and the whole server has a daily cap on G
    npm install
    ```
 2. Copy `.env.example` to `.env.local` and fill in:
-   - `GEMINI_API_KEY`: from [Google AI Studio](https://aistudio.google.com/apikey).
+   - `GEMINI_API_KEY`
    - `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`: on [developer.paypal.com](https://developer.paypal.com/dashboard/applications/sandbox),
      choose **Sandbox**, create an app, and copy its client id and secret.
    - Your sandbox **buyer** login is under *Sandbox → Accounts* (the *Personal* account).
