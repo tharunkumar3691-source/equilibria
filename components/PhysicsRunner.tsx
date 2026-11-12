@@ -17,7 +17,7 @@ import { frameShot, shotPoints, sceneBox, fitWholeScene } from '../lib/framing';
 import { createHuman, isHumanKind, Human } from '../lib/humans';
 import { realMaterial, addGround } from '../lib/sceneKit';
 import { Timeline } from '../lib/timeline';
-import { ThemeController, THEMES, ThemeId } from '../lib/themes';
+import { ThemeController, THEMES, ThemeId, DEFAULT_SCENE_THEME } from '../lib/themes';
 import { buildEnvironment, chooseSetting, EnvHandle, EnvironmentSpec, SETTING_PLACES } from '../lib/environments';
 import { DEMOS } from '../lib/demos';
 import { SceneRecorder, recordingSupported, downloadBlob, timestampName } from '../lib/capture';
@@ -174,8 +174,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
 
   // --- VIEW TOOLS ---
   const themeControllerRef = useRef<ThemeController | null>(null);
-  const themeRef = useRef<ThemeId>('original');
-  const [theme, setTheme] = useState<ThemeId>('original');
+  // Every scene (the demos and the ones people generate) opens on the space backdrop and lighting; the
+  // scene's own look stays one click away under "Scene" in the settings
+  const themeRef = useRef<ThemeId>(DEFAULT_SCENE_THEME);
+  const [theme, setTheme] = useState<ThemeId>(DEFAULT_SCENE_THEME);
   const [showVectors, setShowVectors] = useState(false);
   const showVectorsRef = useRef(false);
   const [rulerMode, setRulerMode] = useState(false);

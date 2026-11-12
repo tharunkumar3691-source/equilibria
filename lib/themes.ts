@@ -5,6 +5,9 @@ import * as THREE from 'three';
 
 export type ThemeId = 'original' | 'studio' | 'outdoor' | 'night' | 'space';
 
+// The look every scene opens with, generated ones included
+export const DEFAULT_SCENE_THEME: ThemeId = 'space';
+
 interface ThemeSpec {
   label: string;
   swatch: string;                 // CSS background for the picker button
