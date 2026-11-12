@@ -99,7 +99,7 @@ free up to a daily number per visitor, and the whole server has a daily cap on G
    "I need credits for my class"). Sign in to PayPal with the **sandbox buyer account** given in the
    submission's testing instructions. No real money moves.
 3. To see *verified or free*, watch the balance after a scene that fails its check: the credit comes back.
-4. To see the student pool, choose *Sponsor students* in the credits window, then (in another browser with
+4. To see the student pool, choose *Gift to students* in the credits window, then (in another browser with
    0 credits) take a share of it.
 
 ## Run it yourself

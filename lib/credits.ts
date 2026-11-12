@@ -3,7 +3,14 @@
 
 export interface Pack { id: string; credits: number; price: string; label: string; note: string }
 export type Purpose = 'self' | 'pool';
-export interface PoolStatus { credits: number; donated: number; sponsors: number; claimable: number }
+export interface PoolStatus {
+  credits: number;     // Credits waiting for students
+  donated: number;     // Given by sponsors, all time
+  sponsors: number;
+  used?: number;       // Taken by students, all time
+  perDay?: number;     // Free credits one student may take a day, once their own run out
+  claimable: number;   // How many this browser may still take today
+}
 export interface CreditStatus {
   credits: number;
   purchased: number;

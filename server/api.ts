@@ -94,7 +94,10 @@ export function createApi(env: Record<string, string | undefined>) {
       purchased: device.purchased,
       sponsored: device.sponsored || 0,
       assistant: { used: store.assistantUsed(device), limit: store.assistantLimit },
-      pool: { credits: pool.credits, donated: pool.donated, sponsors: pool.sponsors, claimable: store.poolClaimLeft(device) },
+      pool: {
+        credits: pool.credits, donated: pool.donated, sponsors: pool.sponsors, used: pool.claimed || 0,
+        perDay: store.poolPerDay, claimable: store.poolClaimLeft(device),
+      },
     };
   };
 
@@ -187,7 +190,7 @@ export function createApi(env: Record<string, string | undefined>) {
       const messages: Record<string, string> = {
         HAS_CREDITS: 'You still have credits of your own; the pool is kept for students who have none.',
         CLAIMED_TODAY: 'You have already taken today’s share of the student pool. It refills as people sponsor it.',
-        POOL_EMPTY: 'The student pool is empty right now. Anyone can refill it with "Sponsor students".',
+        POOL_EMPTY: 'The student pool is empty right now. Anyone can refill it with "Gift to students" in the credits window.',
       };
       json(res, claimed ? 200 : 409, { claimed, error: reason, message: reason ? messages[reason] || reason : undefined, ...summary(id) });
       return;

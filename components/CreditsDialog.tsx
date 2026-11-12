@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Coins, X, Check, ShieldCheck, RotateCcw, Sparkles, AlertCircle, HeartHandshake, Gift, GraduationCap, Zap, Lock, ArrowRight } from 'lucide-react';
+import {
+  Coins, X, Check, ShieldCheck, RotateCcw, Sparkles, AlertCircle, HeartHandshake, Gift, GraduationCap, Zap, Lock, ArrowRight, Users
+} from 'lucide-react';
 import {
   Balance, capturePayPalOrder, claimFromPool, createPayPalOrder, CreditError, CreditStatus, loadPayPalSdk, PreparedOrder, Purpose
 } from '../lib/credits';
@@ -53,13 +55,13 @@ const CountUp: React.FC<{ value: number }> = ({ value }) => {
 // A short shower of confetti in the app's colours: CSS only, a few dozen pieces, gone in under three seconds
 const CONFETTI_COLOURS = ['#86cbbf', '#e8cc96', '#c7bce8', '#e5aca6', '#a9d1b0', '#a3cde0'];
 const Confetti: React.FC = () => {
-  const pieces = useMemo(() => Array.from({ length: 36 }, (_, i) => ({
+  const pieces = useMemo(() => Array.from({ length: 40 }, (_, i) => ({
     left: Math.random() * 100,
     delay: Math.random() * 0.35,
     duration: 1.6 + Math.random() * 1.1,
-    drift: (Math.random() - 0.5) * 120,
+    drift: (Math.random() - 0.5) * 140,
     spin: (Math.random() - 0.5) * 720,
-    size: 5 + Math.random() * 5,
+    size: 6 + Math.random() * 5,
     colour: CONFETTI_COLOURS[i % CONFETTI_COLOURS.length],
     round: i % 3 === 0,
   })), []);
@@ -81,9 +83,11 @@ const Confetti: React.FC = () => {
   );
 };
 
-// Buying credits with PayPal (sandbox), for yourself or for students who cannot pay. Orders are created and
-// captured by the server; the page only shows PayPal's own buttons and window, so no payment details ever
-// pass through Equilibria.
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// Buying credits with PayPal (sandbox), for yourself or as a gift to students who cannot pay. Orders are
+// created and captured by the server; the page only shows PayPal's own buttons and window, so no payment
+// details ever pass through Equilibria.
 export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, onBalance, onPaid, onClose }) => {
   const [purpose, setPurpose] = useState<Purpose>(request.order?.purpose ?? request.purpose ?? 'self');
   const [packId, setPackId] = useState(request.order?.pack ?? request.pack ?? status?.packs[0]?.id ?? 'starter');
@@ -121,7 +125,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
       if (gone || !holder.current) return;
       holder.current.innerHTML = '';
       buttons = paypal.Buttons({
-        style: { layout: 'vertical', shape: 'pill', color: 'gold', label: 'pay', height: 44, tagline: false },
+        style: { layout: 'vertical', shape: 'pill', color: 'gold', label: 'pay', height: 50, tagline: false },
         createOrder: async () => {
           setMessage(null);
           const { packId: chosenPack, purpose: chosenPurpose } = choice.current;
@@ -190,6 +194,10 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
 
   const credits = status?.credits ?? 0;
   const pool = status?.pool;
+  const poolCredits = pool?.credits ?? 0;
+  const perDay = Math.max(1, pool?.perDay ?? 2);
+  // How many students a number of credits gives a free day of study (their daily share each)
+  const studentDays = (n: number) => Math.max(1, Math.floor(n / perDay));
   const canClaim = !!pool && credits === 0 && pool.credits > 0 && pool.claimable > 0;
   const packs = status?.packs ?? [];
   const pack = packs.find(p => p.id === packId);
@@ -199,108 +207,160 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const perCredit = (p: { price: string; credits: number }) => Number(p.price) / p.credits;
   const dearest = packs.length ? Math.max(...packs.map(perCredit)) : 0;
   const busy = phase === 'paying';
+  const done = phase === 'done' && !!result;
+  const gaveToPool = done && result?.purpose === 'pool';
+  // The ring shows what this choice changes: your balance, or the students' pool
+  const orbShowsPool = done ? gaveToPool : sponsoring;
+  const orbValue = orbShowsPool ? poolCredits : credits;
+
+  const title = done
+    ? (gaveToPool ? 'Thank you, sponsor' : 'All set')
+    : sponsoring ? 'Gift credits to students' : request.reason === 'empty' ? 'Top up to keep creating' : 'Power up your physics';
+  const subtitle = done
+    ? (gaveToPool ? 'Your gift is in the student pool, ready for the next student who runs out.' : 'Your payment went through with PayPal.')
+    : sponsoring
+      ? 'Pay for credits that students who cannot pay will use for free.'
+      : 'One credit makes one new simulation or solves one problem. Demos and edits are free.';
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md" onClick={() => !busy && onClose()} role="dialog" aria-modal="true" aria-label="Credits">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-5 bg-slate-950/75 backdrop-blur-md" onClick={() => !busy && onClose()} role="dialog" aria-modal="true" aria-label={sponsoring ? 'Gift credits to students' : 'Credits'}>
       <div
-        className="relative w-full max-w-[460px] max-h-[94vh] overflow-y-auto overflow-x-hidden rounded-[28px] border border-white/[0.09] bg-slate-900 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.8)] credits-rise"
+        className="relative w-full max-w-[580px] max-h-[96vh] overflow-y-auto overflow-x-hidden rounded-[30px] border border-white/[0.09] bg-slate-900 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.8)] credits-rise"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Hero: the balance as a glowing orb, tinted by what is being chosen */}
+        {/* Hero: the balance (or the students' pool) as a glowing ring, tinted by what is being chosen */}
         <div
-          className="relative px-6 pt-5 pb-5 overflow-hidden transition-[background] duration-500"
+          className="relative px-5 sm:px-8 pt-6 sm:pt-7 pb-6 overflow-hidden transition-[background] duration-500"
           style={{ background: `radial-gradient(90% 150% at 0% 0%, ${look.from}75 0%, transparent 60%), radial-gradient(80% 140% at 100% 0%, ${look.to}66 0%, transparent 62%), radial-gradient(60% 90% at 55% 120%, #dcb67633 0%, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.04), transparent)` }}
         >
-          <button onClick={onClose} disabled={busy} className="absolute top-4 right-4 z-10 p-2 rounded-full text-slate-300 bg-black/20 hover:text-white hover:bg-black/35 disabled:opacity-40" aria-label="Close">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} disabled={busy} className="absolute top-4 right-4 z-10 p-2.5 rounded-full text-slate-200 bg-black/25 hover:text-white hover:bg-black/40 disabled:opacity-40" aria-label="Close">
+            <X className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-4">
-            <div className="relative shrink-0 w-[72px] h-[72px]" aria-label={`Your balance: ${credits} ${credits === 1 ? 'credit' : 'credits'}`}>
-              <div className="absolute inset-0 rounded-full credits-orb" style={{ background: `conic-gradient(from 0deg, ${look.from}, ${look.to}, #e8cc96, ${look.ring}, ${look.from})`, boxShadow: `0 0 28px -4px ${look.from}` }}></div>
-              <div className="absolute inset-[4px] rounded-full bg-slate-900/95 flex flex-col items-center justify-center">
-                <span className="font-display text-2xl leading-none text-slate-50 tabular-nums">{credits}</span>
-                <span className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-400">{credits === 1 ? 'credit' : 'credits'}</span>
+          <div className="flex items-center gap-4 sm:gap-5">
+            <div
+              className="relative shrink-0 w-[84px] h-[84px] sm:w-[100px] sm:h-[100px]"
+              aria-label={orbShowsPool ? `Student pool: ${plural(orbValue, 'credit', 'credits')}` : `Your balance: ${plural(orbValue, 'credit', 'credits')}`}
+            >
+              <div className="absolute inset-0 rounded-full credits-orb" style={{ background: `conic-gradient(from 0deg, ${look.from}, ${look.to}, #e8cc96, ${look.ring}, ${look.from})`, boxShadow: `0 0 32px -4px ${look.from}` }}></div>
+              <div className="absolute inset-[5px] rounded-full bg-slate-900/95 flex flex-col items-center justify-center">
+                <span className="font-display text-[30px] sm:text-[36px] leading-none text-slate-50 tabular-nums">{orbValue}</span>
+                <span className="mt-1 text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.12em] text-slate-300">
+                  {orbShowsPool ? 'in pool' : orbValue === 1 ? 'credit' : 'credits'}
+                </span>
               </div>
             </div>
-            <div className="min-w-0 pr-8">
-              <h2 className="font-display text-[22px] leading-tight text-slate-50">
-                {phase === 'done' ? 'All set' : sponsoring ? 'Sponsor a student' : request.reason === 'empty' ? 'Top up to keep creating' : 'Power up your physics'}
-              </h2>
-              <p className="mt-1 text-[13px] leading-snug text-slate-300/90">
-                {phase === 'done'
-                  ? (sponsoring ? 'Thank you for helping students keep learning.' : 'Thank you. Your payment went through with PayPal.')
-                  : sponsoring
-                  ? 'Your credits go to the student pool, for learners who cannot pay.'
-                  : 'Each credit lights up one new simulation or solved problem. Demos and edits are free.'}
-              </p>
+            <div className="min-w-0 pr-9">
+              <h2 className="font-display text-[24px] sm:text-[30px] leading-[1.15] text-slate-50">{title}</h2>
+              <p className="mt-1.5 text-[14px] sm:text-[15px] leading-snug text-slate-200/90">{subtitle}</p>
             </div>
           </div>
         </div>
 
-        {phase === 'done' && result ? (
+        {done && result ? (
           /* Success: a moment of celebration, then straight back to work */
-          <div className="relative px-6 pt-4 pb-7 text-center" role="status">
+          <div className="relative px-6 sm:px-8 pt-5 pb-8 text-center" role="status">
             <Confetti />
             <div
-              className="relative mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full credits-pop"
-              style={{ background: `radial-gradient(circle at 30% 30%, ${look.ring}, ${look.from})`, boxShadow: `0 0 40px -6px ${look.from}` }}
+              className="relative mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full credits-pop"
+              style={{ background: `radial-gradient(circle at 30% 30%, ${look.ring}, ${look.from})`, boxShadow: `0 0 44px -6px ${look.from}` }}
             >
-              {result.purpose === 'pool' ? <HeartHandshake className="w-9 h-9 text-white" /> : <Check className="w-10 h-10 text-white" strokeWidth={2.5} />}
+              {gaveToPool ? <HeartHandshake className="w-11 h-11 text-white" /> : <Check className="w-12 h-12 text-white" strokeWidth={2.5} />}
             </div>
-            <p className="font-display text-4xl text-slate-50 tabular-nums">+<CountUp value={result.added} /></p>
-            <p className="mt-1 text-[15px] text-slate-200">
-              {result.purpose === 'pool' ? 'credits given to students' : result.added === 1 ? 'credit added' : 'credits added'}
+            <p className="font-display text-5xl text-slate-50 tabular-nums">+<CountUp value={result.added} /></p>
+            <p className="mt-1.5 text-[17px] text-slate-100">
+              {gaveToPool ? 'credits gifted to students' : result.added === 1 ? 'credit added' : 'credits added'}
             </p>
-            <p className="mt-3 text-[13px] text-slate-400">
-              {result.purpose === 'pool'
-                ? <>The student pool now holds <span className="text-slate-100 font-medium tabular-nums">{pool?.credits ?? result.added}</span> credits. Thank you for paying it forward.</>
-                : <>Your balance is now <span className="text-slate-100 font-medium tabular-nums">{credits}</span> credits.</>}
+            <p className="mt-3 mx-auto max-w-[400px] text-[15px] leading-relaxed text-slate-300">
+              {gaveToPool
+                ? <>The student pool now holds <b className="text-slate-50 tabular-nums">{plural(poolCredits, 'credit', 'credits')}</b>: a free day of physics for about <b className="text-slate-50 tabular-nums">{plural(studentDays(poolCredits), 'student', 'students')}</b>.</>
+                : <>Your balance is now <b className="text-slate-50 tabular-nums">{plural(credits, 'credit', 'credits')}</b>.</>}
             </p>
             <button
               onClick={onClose}
-              className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full text-white text-sm font-semibold shadow-calm hover:brightness-110"
+              className="mt-7 inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-white text-[16px] font-semibold shadow-calm hover:brightness-110"
               style={{ background: `linear-gradient(135deg, ${look.from}, ${look.to})` }}
               autoFocus
             >
-              {result.purpose === 'pool' ? 'Back to the app' : 'Start creating'} <ArrowRight className="w-4 h-4" />
+              {gaveToPool ? 'Back to the app' : 'Start creating'} <ArrowRight className="w-5 h-5" />
             </button>
           </div>
         ) : (
-          <div className="px-5 sm:px-6 pt-4 pb-5 space-y-4">
+          <div className="px-4 sm:px-8 pt-5 pb-6 space-y-5">
             {/* A student with none left: today's free share of the pool comes first */}
             {pool && canClaim && (
-              <div className="flex items-center gap-3 rounded-2xl p-3.5 border border-emerald-300/25" style={{ background: 'linear-gradient(135deg, rgba(106,162,118,0.18), rgba(79,156,144,0.08))' }}>
-                <span className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/20"><Gift className="w-4.5 h-4.5 text-emerald-200" /></span>
-                <p className="min-w-0 flex-1 text-[13px] leading-snug text-slate-100">Sponsors left <span className="font-semibold tabular-nums">{pool.credits}</span> free credits for students. Take today’s share.</p>
-                <button onClick={claim} disabled={claiming} className="shrink-0 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white text-[12px] font-semibold disabled:opacity-50">
-                  {claiming ? 'Taking…' : `Take ${Math.min(pool.claimable, pool.credits)}`}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-2xl p-4 border border-emerald-300/30" style={{ background: 'linear-gradient(135deg, rgba(106,162,118,0.22), rgba(79,156,144,0.1))' }}>
+                <span className="shrink-0 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-400/20"><Gift className="w-5 h-5 text-emerald-200" /></span>
+                <p className="min-w-0 flex-1 text-[15px] leading-snug text-slate-100">
+                  <b className="font-semibold">Free for students.</b> Sponsors have left {plural(pool.credits, 'credit', 'credits')}; you can take {Math.min(pool.claimable, pool.credits)} today.
+                </p>
+                <button onClick={claim} disabled={claiming} className="shrink-0 w-full sm:w-auto px-5 py-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white text-[15px] font-semibold disabled:opacity-50">
+                  {claiming ? 'Taking…' : `Take ${Math.min(pool.claimable, pool.credits)} free`}
                 </button>
               </div>
             )}
 
             {/* Who it is for: a segmented switch whose highlight takes the colour of the choice */}
-            <div className="relative grid grid-cols-2 p-1 rounded-2xl bg-black/25 border border-white/[0.05]" role="tablist" aria-label="Who the credits are for">
+            <div className="relative grid grid-cols-2 p-1.5 rounded-2xl bg-black/25 border border-white/[0.06]" role="tablist" aria-label="Who the credits are for">
               <span
-                className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-xl transition-all duration-300 ease-out"
-                style={{ left: sponsoring ? 'calc(50% + 0px)' : '4px', background: sponsoring ? 'linear-gradient(135deg, rgba(196,113,107,0.45), rgba(106,162,118,0.35))' : 'linear-gradient(135deg, rgba(79,156,144,0.45), rgba(95,159,188,0.35))' }}
+                className="absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] rounded-xl transition-all duration-300 ease-out"
+                style={{ left: sponsoring ? '50%' : '6px', background: sponsoring ? 'linear-gradient(135deg, rgba(196,113,107,0.5), rgba(106,162,118,0.4))' : 'linear-gradient(135deg, rgba(79,156,144,0.5), rgba(95,159,188,0.4))' }}
                 aria-hidden="true"
               ></span>
-              {([['self', 'For me', Coins], ['pool', 'Sponsor students', HeartHandshake]] as const).map(([id, label, Icon]) => (
+              {([['self', 'For me', Coins], ['pool', 'Gift to students', HeartHandshake]] as const).map(([id, label, Icon]) => (
                 <button
                   key={id}
                   role="tab"
                   aria-selected={purpose === id}
                   onClick={() => setPurpose(id)}
                   disabled={busy}
-                  className={`relative z-10 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${purpose === id ? 'text-white' : 'text-slate-400 hover:text-slate-100'}`}
+                  className={`relative z-10 flex items-center justify-center gap-2 py-3 rounded-xl text-[15px] font-semibold transition-colors ${purpose === id ? 'text-white' : 'text-slate-300 hover:text-white'}`}
                 >
-                  <Icon className="w-4 h-4" /> {label}
+                  <Icon className="w-[18px] h-[18px]" /> {label}
                 </button>
               ))}
             </div>
 
+            {/* Gifting, explained: where the money goes and who it helps */}
+            {sponsoring && (
+              <div className="rounded-2xl border border-rose-200/15 p-4 sm:p-5" style={{ background: 'linear-gradient(150deg, rgba(196,113,107,0.14), rgba(106,162,118,0.1))' }}>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-rose-200/90">How gifting works</p>
+                <ol className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {([
+                    [Coins, 'You pay', 'Choose a pack and pay with PayPal, as you would for yourself.'],
+                    [Users, 'It joins the pool', 'The credits go into one shared student pool, not to your balance.'],
+                    [GraduationCap, 'Students use it', `A student who runs out takes up to ${plural(perDay, 'free credit', 'free credits')} a day.`],
+                  ] as const).map(([Icon, head, body], i) => (
+                    <li key={head} className="flex sm:flex-col gap-3 sm:gap-2">
+                      <span className="relative shrink-0 flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.08] text-rose-100">
+                        <Icon className="w-5 h-5" />
+                        <span className="absolute -top-1.5 -left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-rose-300 text-[11px] font-bold text-slate-900">{i + 1}</span>
+                      </span>
+                      <span>
+                        <span className="block text-[15px] font-semibold text-slate-50">{head}</span>
+                        <span className="block text-[13px] leading-snug text-slate-300">{body}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                {pool && (
+                  <div className="mt-4 grid grid-cols-3 divide-x divide-white/10 rounded-xl bg-black/20 py-2.5 text-center">
+                    {([
+                      [pool.credits, 'credits waiting'],
+                      [pool.used ?? 0, 'used by students'],
+                      [pool.sponsors, pool.sponsors === 1 ? 'sponsor so far' : 'sponsors so far'],
+                    ] as const).map(([value, label]) => (
+                      <div key={label} className="px-1">
+                        <div className="font-display text-[22px] leading-none text-slate-50 tabular-nums">{value}</div>
+                        <div className="mt-1 text-[11px] sm:text-[12px] text-slate-400">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* The packs: colourful cards, the best value marked */}
-            <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Credit pack">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4" role="radiogroup" aria-label={sponsoring ? 'Gift size' : 'Credit pack'}>
               {packs.map(p => {
                 const selected = p.id === packId;
                 const pl = lookOf(p.id, sponsoring);
@@ -313,32 +373,34 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                     aria-checked={selected}
                     onClick={() => setPackId(p.id)}
                     disabled={busy}
-                    className={`group relative text-left rounded-2xl p-3.5 pt-4 border transition-all duration-300 ${selected ? 'scale-[1.02]' : 'hover:-translate-y-0.5 opacity-90 hover:opacity-100'}`}
+                    className={`group relative text-left rounded-2xl p-4 sm:p-5 pt-5 border transition-all duration-300 ${selected ? 'scale-[1.02]' : 'hover:-translate-y-0.5 opacity-90 hover:opacity-100'}`}
                     style={{
                       background: `linear-gradient(160deg, ${pl.from}${selected ? '55' : '2b'} 0%, ${pl.to}${selected ? '33' : '17'} 100%)`,
-                      borderColor: selected ? pl.ring : 'rgba(255,255,255,0.07)',
-                      boxShadow: selected ? `0 12px 30px -14px ${pl.from}, inset 0 0 0 1px ${pl.ring}55` : undefined,
+                      borderColor: selected ? pl.ring : 'rgba(255,255,255,0.08)',
+                      boxShadow: selected ? `0 14px 34px -14px ${pl.from}, inset 0 0 0 1px ${pl.ring}55` : undefined,
                     }}
                   >
                     {saving > 0 && (
-                      <span className="absolute -top-2.5 right-2.5 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-slate-900 shadow-sm" style={{ background: 'linear-gradient(135deg, #f1dfb9, #dcb676)' }} title={`Best value: ${saving}% less per credit`}>
+                      <span className="absolute -top-3 right-3 whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide text-slate-900 shadow-sm" style={{ background: 'linear-gradient(135deg, #f1dfb9, #dcb676)' }} title={`Best value: ${saving}% less per credit`}>
                         Best value · −{saving}%
                       </span>
                     )}
                     <span className="flex items-center justify-between">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${pl.from}40`, color: pl.text }}><Icon className="w-4 h-4" /></span>
-                      <span className={`flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${selected ? 'border-transparent' : 'border-white/20'}`} style={selected ? { background: pl.ring } : undefined}>
-                        {selected && <Check className="w-3 h-3 text-slate-900" strokeWidth={3} />}
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${pl.from}44`, color: pl.text }}><Icon className="w-5 h-5" /></span>
+                      <span className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors ${selected ? 'border-transparent' : 'border-white/25'}`} style={selected ? { background: pl.ring } : undefined}>
+                        {selected && <Check className="w-3.5 h-3.5 text-slate-900" strokeWidth={3} />}
                       </span>
                     </span>
-                    <span className="mt-2.5 block text-[12px] font-medium" style={{ color: pl.text }}>{p.label}</span>
-                    <span className="block font-display text-[26px] leading-tight text-slate-50 tabular-nums">{p.credits}<span className="ml-1 text-[14px] text-slate-300">credits</span></span>
-                    <span className="mt-1 flex items-baseline gap-1.5">
-                      <span className="text-[17px] font-semibold text-white tabular-nums">${p.price}</span>
-                      <span className="text-[11px] text-slate-400 tabular-nums">${perCredit(p).toFixed(2)} each</span>
+                    <span className="mt-3 block text-[14px] font-semibold" style={{ color: pl.text }}>{sponsoring ? (p.id === 'class' ? 'Gift a class' : 'Small gift') : p.label}</span>
+                    <span className="block font-display text-[32px] sm:text-[38px] leading-tight text-slate-50 tabular-nums">
+                      {p.credits}<span className="ml-1.5 text-[15px] sm:text-[16px] text-slate-300">credits</span>
                     </span>
-                    <span className="mt-1.5 block text-[11px] leading-snug text-slate-400">
-                      {sponsoring ? `${p.credits} scenes for students who cannot pay` : p.note}
+                    <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-[20px] sm:text-[22px] font-semibold text-white tabular-nums">${p.price}</span>
+                      <span className="text-[12px] sm:text-[13px] text-slate-400 tabular-nums">${perCredit(p).toFixed(2)} each</span>
+                    </span>
+                    <span className="mt-2 block text-[13px] leading-snug text-slate-300">
+                      {sponsoring ? `A free day of physics for about ${plural(studentDays(p.credits), 'student', 'students')}` : p.note}
                     </span>
                   </button>
                 );
@@ -347,58 +409,66 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
 
             {/* What happens when you pay */}
             {pack && (
-              <div className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-slate-950/50 border border-white/[0.06]">
-                <span className="text-[13px] text-slate-300">
-                  {sponsoring ? <>Student pool <span className="tabular-nums text-slate-400">{pool?.credits ?? 0}</span></> : <>Your balance <span className="tabular-nums text-slate-400">{credits}</span></>}
-                  <ArrowRight className="inline w-3.5 h-3.5 mx-1.5 -mt-0.5 text-slate-500" />
-                  <span className="font-semibold tabular-nums" style={{ color: look.text }}>{(sponsoring ? pool?.credits ?? 0 : credits) + pack.credits}</span>
+              <div className="flex items-center justify-between gap-3 rounded-2xl px-4 sm:px-5 py-3.5 bg-slate-950/50 border border-white/[0.07]">
+                <span className="text-[14px] sm:text-[15px] text-slate-200">
+                  {sponsoring ? 'Student pool' : 'Your balance'} <span className="tabular-nums text-slate-400">{sponsoring ? poolCredits : credits}</span>
+                  <ArrowRight className="inline w-4 h-4 mx-1.5 -mt-0.5 text-slate-500" />
+                  <span className="font-semibold tabular-nums" style={{ color: look.text }}>{(sponsoring ? poolCredits : credits) + pack.credits}</span>
+                  <span className="text-slate-400"> credits</span>
                 </span>
-                <span className="text-[13px] font-semibold text-white tabular-nums">${pack.price}</span>
+                <span className="text-[16px] sm:text-[17px] font-semibold text-white tabular-nums">${pack.price}</span>
               </div>
             )}
 
             {message && (
-              <div className="flex items-start gap-2 text-[12px] text-red-200 bg-red-400/[0.08] border border-red-300/20 rounded-xl p-3" role="alert">
-                <AlertCircle className="w-4 h-4 mt-px shrink-0" /> <span>{message}</span>
+              <div className="flex items-start gap-2.5 text-[14px] text-red-200 bg-red-400/[0.08] border border-red-300/20 rounded-xl p-3.5" role="alert">
+                <AlertCircle className="w-5 h-5 shrink-0" /> <span>{message}</span>
               </div>
             )}
 
             {phase === 'unavailable' ? (
-              <p className="text-[12px] text-amber-200/90 bg-amber-400/[0.07] p-3 rounded-xl border border-amber-300/15">
+              <p className="text-[14px] text-amber-200/90 bg-amber-400/[0.07] p-4 rounded-xl border border-amber-300/15">
                 {status?.paypal || !status ? 'PayPal checkout is not available right now.' : 'PayPal is not set up on this server yet. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET (sandbox) and restart it.'}
               </p>
             ) : (
-              <div className="relative min-h-[118px]">
+              <div className="relative min-h-[140px]">
                 {(phase === 'loading' || busy) && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-slate-900/85 text-[13px] text-slate-200">
-                    <span className="h-6 w-6 rounded-full border-2 border-white/15 animate-spin" style={{ borderTopColor: look.ring }}></span>
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2.5 rounded-2xl bg-slate-900/85 text-[15px] text-slate-200">
+                    <span className="h-7 w-7 rounded-full border-2 border-white/15 animate-spin" style={{ borderTopColor: look.ring }}></span>
                     {busy ? 'Confirming your payment with PayPal…' : 'Loading secure checkout…'}
                   </div>
                 )}
-                {/* PayPal follows the app's dark colour scheme (its card form has dark fields), so its
-                    buttons sit on a dark panel that matches them */}
-                <div ref={holder} className="rounded-2xl bg-[#121718] border border-white/[0.08] p-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]" aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
+                {/* PayPal's buttons on a dark panel: a browser that darkens pages shows PayPal's card form
+                    dark and seamless on it; elsewhere PayPal's own white card sits framed inside */}
+                <div ref={holder} className="rounded-2xl bg-[#121718] border border-white/[0.08] p-2.5 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]" aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
               </div>
             )}
 
             {/* Reassurance, in three short badges */}
-            <div className="flex flex-wrap justify-center gap-1.5">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] text-emerald-200 bg-emerald-400/[0.09] border border-emerald-300/15" title="If a generated scene never passes its physics check, its credit comes back by itself">
-                <RotateCcw className="w-3 h-3" /> Verified or free
+            <div className="flex flex-wrap justify-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] text-emerald-200 bg-emerald-400/[0.09] border border-emerald-300/15" title="If a generated scene never passes its physics check, its credit comes back by itself">
+                <RotateCcw className="w-3.5 h-3.5" /> Verified or free
               </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] text-sky-200 bg-sky-400/[0.09] border border-sky-300/15" title="Payment details stay with PayPal; Equilibria only sees that the order was paid">
-                <Lock className="w-3 h-3" /> Secured by PayPal
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] text-sky-200 bg-sky-400/[0.09] border border-sky-300/15" title="Payment details stay with PayPal; Equilibria only sees that the order was paid">
+                <Lock className="w-3.5 h-3.5" /> Secured by PayPal
               </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] text-amber-200 bg-amber-400/[0.09] border border-amber-300/15" title="This demo uses PayPal's sandbox: test accounts and test cards, no real money">
-                <ShieldCheck className="w-3 h-3" /> Sandbox: no real money
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] text-amber-200 bg-amber-400/[0.09] border border-amber-300/15" title="This demo uses PayPal's sandbox: test accounts and test cards, no real money">
+                <ShieldCheck className="w-3.5 h-3.5" /> Sandbox: no real money
               </span>
             </div>
 
-            {pool && !canClaim && pool.donated > 0 && !sponsoring && (
-              <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
-                <Sparkles className="w-3 h-3 text-rose-300/80" />
-                {pool.sponsors} {pool.sponsors === 1 ? 'sponsor has' : 'sponsors have'} given {pool.donated} credits to students so far
-              </p>
+            {/* For yourself: a quiet invitation to gift, with what others have given */}
+            {!sponsoring && !canClaim && (
+              <button
+                onClick={() => setPurpose('pool')}
+                disabled={busy}
+                className="w-full flex items-center justify-center gap-2 text-[13px] sm:text-[14px] text-slate-300 hover:text-white"
+              >
+                <Sparkles className="w-4 h-4 text-rose-300" />
+                {pool && pool.donated > 0
+                  ? <>{plural(pool.sponsors, 'sponsor has', 'sponsors have')} gifted {pool.donated} credits to students. <span className="underline underline-offset-4 decoration-rose-300/60">Gift some too</span></>
+                  : <>Know a student who cannot pay? <span className="underline underline-offset-4 decoration-rose-300/60">Gift them credits</span></>}
+              </button>
             )}
           </div>
         )}

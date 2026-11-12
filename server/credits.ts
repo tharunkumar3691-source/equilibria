@@ -236,7 +236,7 @@ export function createCreditStore(options: CreditOptions = {}) {
   }, 60 * 1000).unref();
 
   return {
-    device, spend, finish, authorizeCall, recordOrder, order, creditOrder, claimFromPool, pool, poolClaimLeft,
+    device, spend, finish, authorizeCall, recordOrder, order, creditOrder, claimFromPool, pool, poolClaimLeft, poolPerDay: poolClaim,
     assistantUsed, assistantLimit, freeCredits, flush,
   };
 }
