@@ -228,6 +228,24 @@
   --focus: rgba(79, 70, 229, 0.75); --selection: rgba(99, 102, 241, 0.25);
   color-scheme: light;
 }
+:root[data-theme="milky"] {
+  --color-slate-50: #1a1714; --color-slate-100: #2a2622; --color-slate-200: #3e3832; --color-slate-300: #57504a; --color-slate-400: #776e66; --color-slate-500: #9a9189; --color-slate-600: #c9c1b8; --color-slate-700: #e2dbd2; --color-slate-800: #efe9e1; --color-slate-900: #f8f4ee; --color-slate-950: #fffdfa;
+  --color-blue-50: #2b1d12; --color-blue-100: #46301f; --color-blue-200: #5c3f29; --color-blue-300: #754f33; --color-blue-400: #8d6142; --color-blue-500: #a87a56; --color-blue-600: #c09574; --color-blue-700: #d6b597; --color-blue-800: #e8d3bf; --color-blue-900: #f3e8dd; --color-blue-950: #faf4ee;
+  --color-sky-50: #24112b; --color-sky-100: #3d1d48; --color-sky-200: #5b2b6b; --color-sky-300: #7a3a90; --color-sky-400: #9a4cb5; --color-sky-500: #b964d3; --color-sky-600: #d084e6; --color-sky-700: #e3aaf0; --color-sky-800: #efcdf6; --color-sky-900: #f7e6fb; --color-sky-950: #fbf2fd;
+  --color-cyan-50: #15162e; --color-cyan-100: #23244d; --color-cyan-200: #353774; --color-cyan-300: #474a9c; --color-cyan-400: #5b5fc4; --color-cyan-500: #7279e0; --color-cyan-600: #8f99ee; --color-cyan-700: #b3bbf6; --color-cyan-800: #d3d8fb; --color-cyan-900: #e4e7fd; --color-cyan-950: #f1f2fe;
+  --color-violet-50: #241231; --color-violet-100: #3b1f52; --color-violet-200: #582e7a; --color-violet-300: #753da3; --color-violet-400: #934fcb; --color-violet-500: #ae6ae3; --color-violet-600: #c88ef0; --color-violet-700: #dcb4f7; --color-violet-800: #ecd5fb; --color-violet-900: #f3e5fd; --color-violet-950: #f8f0fe;
+  --color-emerald-50: #152219; --color-emerald-100: #22382a; --color-emerald-200: #335a3c; --color-emerald-300: #43704e; --color-emerald-400: #548a61; --color-emerald-500: #6aa276; --color-emerald-600: #86bb90; --color-emerald-700: #a9d1b0; --color-emerald-800: #cfe5d2; --color-emerald-900: #e2f0e4; --color-emerald-950: #f0f7f1;
+  --color-amber-50: #241c10; --color-amber-100: #3d2f1a; --color-amber-200: #614826; --color-amber-300: #866434; --color-amber-400: #a87e43; --color-amber-500: #c99b57; --color-amber-600: #dcb676; --color-amber-700: #e8cc96; --color-amber-800: #f1dfb9; --color-amber-900: #f7eedb; --color-amber-950: #fbf6ec;
+  --color-yellow-50: #231e10; --color-yellow-100: #3b321a; --color-yellow-200: #5c4e29; --color-yellow-300: #7f6c39; --color-yellow-400: #a58d4c; --color-yellow-500: #c7ad66; --color-yellow-600: #dcc584; --color-yellow-700: #ead9a6; --color-yellow-800: #f3e7c4; --color-yellow-900: #f6efd6; --color-yellow-950: #faf6e8;
+  --color-red-50: #2a1615; --color-red-100: #4a2826; --color-red-200: #6b3936; --color-red-300: #8a4945; --color-red-400: #a95b56; --color-red-500: #c4716b; --color-red-600: #d78d86; --color-red-700: #e5aca6; --color-red-800: #f1cfcb; --color-red-900: #f8e6e4; --color-red-950: #fcf3f2;
+  --color-science-950: #f6f2ea; --color-science-900: #fffdf9; --color-science-800: #efe9e1; --color-science-500: #a87a56; --color-science-100: #46301f;
+  --color-white: #1a1714; --color-black: #ffffff;
+  --app-bg: #f6f2ea; --app-text: #2a2622; --panel-solid: #fffdf9;
+  --glass-bg: rgba(255, 253, 249, 0.8); --glass-border: rgba(26, 23, 20, 0.08);
+  --glow-1: rgba(168, 122, 86, 0.08); --glow-2: rgba(232, 211, 191, 0.14); --glow-3: rgba(201, 193, 184, 0.1);
+  --focus: rgba(141, 97, 66, 0.75); --selection: rgba(168, 122, 86, 0.25);
+  color-scheme: light;
+}
 :root[data-theme="green"] {
   --color-slate-50: #111a14; --color-slate-100: #1d2a22; --color-slate-200: #2e3f34; --color-slate-300: #43594b; --color-slate-400: #5f7d69; --color-slate-500: #7f9f8a; --color-slate-600: #a9c8b4; --color-slate-700: #cfe3d6; --color-slate-800: #e3f0e7; --color-slate-900: #f1f8f3; --color-slate-950: #fbfefc;
   --color-blue-50: #082818; --color-blue-100: #12462d; --color-blue-200: #155636; --color-blue-300: #156d41; --color-blue-400: #17894f; --color-blue-500: #22a862; --color-blue-600: #3fc27b; --color-blue-700: #6fdc9f; --color-blue-800: #a7f0c4; --color-blue-900: #d1fae0; --color-blue-950: #ecfdf3;

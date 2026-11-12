@@ -1,7 +1,7 @@
 // The app's colour themes. Each one is a set of colour values in index.css (`:root[data-theme="…"]`);
 // choosing one sets that attribute on the page and remembers it in this browser.
 
-export type ThemeId = 'white' | 'dark' | 'purple' | 'green' | 'yellow' | 'orange';
+export type ThemeId = 'white' | 'milky' | 'dark' | 'purple' | 'green' | 'yellow' | 'orange';
 
 export interface Theme {
   id: ThemeId;
@@ -13,6 +13,7 @@ export interface Theme {
 
 export const THEMES: Theme[] = [
   { id: 'white', label: 'White', light: true, swatch: ['#f3f4f7', '#6366f1'], bar: '#f3f4f7' },
+  { id: 'milky', label: 'Milky white', light: true, swatch: ['#f6f2ea', '#a87a56'], bar: '#f6f2ea' },
   { id: 'dark', label: 'Dark', light: false, swatch: ['#0b0c0e', '#3d8bf0'], bar: '#0b0c0e' },
   { id: 'purple', label: 'Purple', light: false, swatch: ['#0d0a18', '#8a5cf6'], bar: '#0d0a18' },
   { id: 'green', label: 'Light green', light: true, swatch: ['#eaf6ee', '#22a862'], bar: '#eaf6ee' },
