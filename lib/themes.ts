@@ -3,7 +3,8 @@
 // never the scene's own objects.
 import * as THREE from 'three';
 
-export type ThemeId = 'original' | 'studio' | 'outdoor' | 'night' | 'space';
+// Every scene is shown in Space; 'original' is the scene's own look, used only when a background colour is hand-picked
+export type ThemeId = 'original' | 'space';
 
 // The look every scene opens with, generated ones included
 export const DEFAULT_SCENE_THEME: ThemeId = 'space';
@@ -79,32 +80,12 @@ function paintedTexture(paint: (c: CanvasRenderingContext2D) => void): THREE.Tex
 }
 
 const SPECS: Record<Exclude<ThemeId, 'original'>, ThemeSpec> = {
-  studio: {
-    label: 'Studio', swatch: 'linear-gradient(#e2e8f0, #64748b)',
-    top: '#cbd5e1', bottom: '#475569', fog: '#64748b',
-    ambient: ['#ffffff', 0.75], sun: ['#ffffff', 1.6]
-  },
-  outdoor: {
-    label: 'Outdoor', swatch: 'linear-gradient(#38bdf8, #e0f2fe)',
-    top: '#2f8fe0', bottom: '#dbeafe', fog: '#c7ddf2',
-    ambient: ['#ffffff', 0.45], sun: ['#fff4d6', 2.1], hemisphere: ['#bfdbfe', '#6b7f4a', 0.7]
-  },
-  night: {
-    label: 'Night', swatch: 'linear-gradient(#020617, #1e3a8a)',
-    top: '#020617', bottom: '#172554', fog: '#0b1433',
-    ambient: ['#93a5d8', 0.3], sun: ['#b6c6ff', 0.75], stars: 900
-  },
   space: {
     label: 'Space', swatch: 'radial-gradient(ellipse 14% 5% at 80% 24%, #ffe9c4, transparent), radial-gradient(circle at 70% 40%, rgba(168,85,247,.6), transparent 45%), radial-gradient(circle at 30% 60%, rgba(59,130,246,.45), transparent 40%), #02010a',
     top: '#010008', bottom: '#010006', fog: '#05040f', paint: paintSpace, floor: '#151729',
     ambient: ['#a5b4fc', 0.3], sun: ['#ffffff', 1.9], stars: 2200
   }
 };
-
-export const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
-  { id: 'original', label: 'Scene', swatch: 'linear-gradient(#0f172a, #1e293b)' },
-  ...(Object.keys(SPECS) as Exclude<ThemeId, 'original'>[]).map(id => ({ id, label: SPECS[id].label, swatch: SPECS[id].swatch }))
-];
 
 function gradientTexture(top: string, bottom: string): THREE.Texture {
   const canvas = document.createElement('canvas');

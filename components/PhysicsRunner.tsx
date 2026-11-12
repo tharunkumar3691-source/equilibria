@@ -17,7 +17,7 @@ import { frameShot, shotPoints, sceneBox, fitWholeScene } from '../lib/framing';
 import { createHuman, isHumanKind, Human } from '../lib/humans';
 import { realMaterial, addGround } from '../lib/sceneKit';
 import { Timeline } from '../lib/timeline';
-import { ThemeController, THEMES, ThemeId, DEFAULT_SCENE_THEME } from '../lib/themes';
+import { ThemeController, ThemeId, DEFAULT_SCENE_THEME } from '../lib/themes';
 import { RangeSlider, formatValue } from './RangeSlider';
 import { buildEnvironment, chooseSetting, EnvHandle, EnvironmentSpec, SETTING_PLACES } from '../lib/environments';
 import { DEMOS } from '../lib/demos';
@@ -213,7 +213,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   // Every scene (the demos and the ones people generate) opens on the space backdrop and lighting; the
   // scene's own look stays one click away under "Scene" in the settings
   const themeRef = useRef<ThemeId>(DEFAULT_SCENE_THEME);
-  const [theme, setTheme] = useState<ThemeId>(DEFAULT_SCENE_THEME);
   const [showVectors, setShowVectors] = useState(false);
   const showVectorsRef = useRef(false);
   const [rulerMode, setRulerMode] = useState(false);
@@ -376,13 +375,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   // Called from resetSimulation, which is memoised, so it always reaches the current versions
   const settingFnsRef = useRef({ clear: clearSetting, build: buildSetting });
   settingFnsRef.current = { clear: clearSetting, build: buildSetting };
-  // Changes the backdrop or lighting under the setting: it comes off first and goes back on top after
-  const underSetting = (change: () => void) => {
-      const had = !!settingRef.current;
-      clearSetting();
-      change();
-      if (had) buildSetting();
-  };
   const setRealisticEnabled = (on: boolean) => {
       realisticRef.current = on;
       setRealisticEnabledState(on);
@@ -413,7 +405,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       azimuth: 45, 
       elevation: 60 
   });
-  const [bgColor, setBgColor] = useState('#151027');
+  const bgColor = '#151027';
 
   const inspectorRef = useRef<HTMLDivElement>(null);
   // The whole stage (toolbar, view, side panel, status line): what goes full screen
@@ -782,14 +774,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       }
   };
 
-  // --- ENVIRONMENT THEME ---
-  const changeTheme = (id: ThemeId) => {
-      themeRef.current = id;
-      setTheme(id);
-      underSetting(() => { if (themeControllerRef.current) themeControllerRef.current.apply(id); });
-      syncLighting();
-  };
-
   // The lighting sliders show the lights as they now are (a backdrop brings its own sun and fill)
   const syncLighting = () => {
       const sun = dirLightRef.current, ambient = ambientLightRef.current;
@@ -887,21 +871,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       if (themeRef.current === 'original' && !settingRef.current && themeControllerRef.current) themeControllerRef.current.capture();
   };
   
-  // A hand-picked background colour replaces the theme and becomes the scene's own look
-  const changeBackground = (hex: string) => {
-      setBgColor(hex);
-      const scene = sceneRef.current, controller = themeControllerRef.current;
-      if (!scene) return;
-      themeRef.current = 'original';
-      setTheme('original');
-      underSetting(() => {
-          if (controller) controller.apply('original');
-          scene.background = new THREE.Color(hex);
-          const fog = scene.fog as THREE.Fog | null;
-          if (fog && fog.color) fog.color.set(hex);
-          if (controller) controller.capture();
-      });
-  };
 
   // --- SELECTION ---
   const firstColor = (mesh: THREE.Object3D): string => {
@@ -2978,24 +2947,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                           </>
                       ) : (
                           <>
-                              {/* Environment theme: backdrop and lighting only; the scene's objects stay as they are */}
-                              <div className="space-y-1.5 pb-3 border-b border-white/5">
-                                  <div className="text-[12px] leading-tight text-slate-200 font-medium">Environment</div>
-                                  <div className="grid grid-cols-5 gap-1">
-                                      {THEMES.map(t => (
-                                          <button
-                                              key={t.id}
-                                              onClick={() => changeTheme(t.id)}
-                                              title={t.id === 'original' ? "The scene's own look" : `${t.label} backdrop and lighting`}
-                                              aria-label={`${t.label} environment`}
-                                              aria-pressed={theme === t.id}
-                                              className={`h-7 rounded-md border transition-transform ${theme === t.id ? 'border-sky-300 ring-1 ring-sky-300 scale-105' : 'border-white/15 hover:border-white/40'}`}
-                                              style={{ background: t.swatch }}
-                                          ></button>
-                                      ))}
-                                  </div>
-                                  <div className="text-[11px] text-slate-400">{THEMES.find(t => t.id === theme)?.label}</div>
-                              </div>
                               <div className="space-y-1.5">
                                   <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
                                       <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Sound volume</span>
@@ -3012,16 +2963,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                                       className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
                                   />
                               </label>
-                              <div className="space-y-1.5">
-                                  <div className="text-[12px] leading-tight text-slate-300">Background colour</div>
-                                  <input
-                                      type="color"
-                                      aria-label="Background colour"
-                                      value={bgColor}
-                                      onChange={(e) => changeBackground(e.target.value)}
-                                      className="w-full h-7 rounded-sm cursor-pointer bg-transparent"
-                                  />
-                              </div>
                               <div className="space-y-1.5">
                                   <div className="text-[12px] leading-tight text-slate-300">Light intensity</div>
                                   <RangeSlider label="Light intensity" min={0} max={5} step={0.1} value={lightSettings.intensity} accent="#fbbf24" onChange={v => updateLighting({ ...lightSettings, intensity: v })} />
