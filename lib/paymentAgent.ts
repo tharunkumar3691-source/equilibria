@@ -23,6 +23,7 @@ export const PAYMENT_TOOLS: FunctionDeclaration[] = [
       properties: {
         pack: { type: Type.STRING, enum: ['starter', 'class'], description: "'starter' (10 credits) for one person; 'class' (50 credits) for a group, a class, or many scenes." },
         purpose: { type: Type.STRING, enum: ['self', 'pool'], description: "'self' adds the credits to the user's balance; 'pool' gives them to the pay-it-forward pool for students who cannot pay." },
+        student: { type: Type.BOOLEAN, description: "true when the user says they are a student and buys for themselves: the student price (60% off). Never for purpose 'pool'." },
         reason: { type: Type.STRING, description: 'One short sentence on why this pack fits what the user said.' },
       },
       required: ['pack', 'purpose'],
@@ -45,13 +46,15 @@ CREDITS AND PAYMENTS (you can act on these with tools, whether or not a scene is
   'starter'; a group, a class, or many scenes: 'class'.
 - To buy, call start_paypal_checkout. It opens PayPal's window; tell the user to approve it there. Never say a payment is
   complete: only PayPal's window completes it, and the app shows the new balance when it does.
+- Students get 60% off packs they buy for themselves: when the user says they are a student, call start_paypal_checkout
+  with student true and mention the student price. Gifts to the pool are always full price.
 - "Pay it forward" / "sponsor students" / "help someone who can't afford it": start_paypal_checkout with purpose 'pool'.
 - A user with 0 credits who cannot pay: if the student pool has credits, offer claim_student_pool (and call it if they agree).
 - Never call a payment tool for a question about physics or about the scene.
 - The chat shows plain text: never use Markdown (no **bold**, no # headings).
 `;
 
-const balanceOf = (s: Balance): Balance => ({ credits: s.credits, purchased: s.purchased, sponsored: s.sponsored, assistant: s.assistant, pool: s.pool });
+const balanceOf = (s: Balance): Balance => ({ credits: s.credits, purchased: s.purchased, sponsored: s.sponsored, assistant: s.assistant, pool: s.pool, purchases: s.purchases });
 
 // Runs one payment tool and returns what the model is told about it
 export async function runPaymentTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
@@ -61,7 +64,7 @@ export async function runPaymentTool(name: string, args: Record<string, any>): P
       announce(BALANCE_EVENT, balanceOf(status));
       return {
         credits: status.credits,
-        packs: status.packs.map(p => ({ id: p.id, credits: p.credits, priceUsd: p.price, label: p.label })),
+        packs: status.packs.map(p => ({ id: p.id, credits: p.credits, priceUsd: p.price, studentPriceUsd: p.studentPrice, label: p.label })),
         studentPool: { credits: status.pool.credits, creditsYouCanTakeToday: status.credits === 0 ? Math.min(status.pool.claimable, status.pool.credits) : 0 },
         paypalAvailable: !!status.paypal,
         freeAssistantRequestsLeftToday: Math.max(0, status.assistant.limit - status.assistant.used),
@@ -70,13 +73,15 @@ export async function runPaymentTool(name: string, args: Record<string, any>): P
     if (name === 'start_paypal_checkout') {
       const pack = args.pack === 'class' ? 'class' : 'starter';
       const purpose = args.purpose === 'pool' ? 'pool' : 'self';
-      const order: PreparedOrder = await createPayPalOrder(pack, purpose);
+      const student = args.student === true && purpose === 'self';
+      const order: PreparedOrder = await createPayPalOrder(pack, purpose, student);
       announce(CHECKOUT_EVENT, order);
       return {
         status: "PayPal order created. PayPal's checkout window is now open for the user to approve; nothing is charged until they do.",
         orderId: order.id,
         credits: order.credits,
         priceUsd: order.price,
+        studentPrice: !!order.student,
         goesTo: purpose === 'pool' ? 'the student pool' : "the user's balance",
       };
     }

@@ -8,12 +8,16 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-export interface Pack { id: string; credits: number; price: string; label: string; note: string }
+export interface Pack { id: string; credits: number; price: string; studentPrice: string; label: string; note: string }
+// Students pay 60% less (on trust: there are no accounts to check). Worked out in whole cents, so the
+// price shown, the PayPal order and the capture check always agree: $2.00 -> $0.80, $8.00 -> $3.20.
+export const STUDENT_DISCOUNT = 60;
+const studentPriceOf = (price: string) => (Math.round(Math.round(Number(price) * 100) * (100 - STUDENT_DISCOUNT) / 100) / 100).toFixed(2);
 // Sandbox prices in USD. The amounts are checked again when a payment is captured.
 export const PACKS: Pack[] = [
   { id: 'starter', credits: 10, price: '2.00', label: 'Starter', note: '10 scenes or solved problems' },
   { id: 'class', credits: 50, price: '8.00', label: 'Class pack', note: '50 credits for a study group or class' },
-];
+].map(p => ({ ...p, studentPrice: studentPriceOf(p.price) }));
 export const packById = (id: unknown) => PACKS.find(p => p.id === id);
 
 export interface Device {
@@ -31,6 +35,7 @@ export interface OrderRecord {
   device: string;
   pack: string;
   purpose?: Purpose;
+  student?: boolean;      // Bought at the student price
   credits: number;
   amount: string;
   status: 'created' | 'credited';
@@ -41,6 +46,7 @@ export interface OrderRecord {
 // A paid order as its buyer sees it: a receipt
 export interface Purchase {
   orderId: string; captureId: string; pack: string; credits: number; amount: string; currency: string; purpose: Purpose; paidAt: number;
+  student?: boolean;
 }
 interface Store {
   devices: Record<string, Device>;
@@ -238,7 +244,7 @@ export function createCreditStore(options: CreditOptions = {}) {
       .slice(0, limit)
       .map(([orderId, o]) => ({
         orderId, captureId: o.captureId || '', pack: packById(o.pack)?.label || o.pack, credits: o.credits,
-        amount: o.amount, currency: 'USD', purpose: o.purpose || 'self', paidAt: o.creditedAt || o.createdAt,
+        amount: o.amount, currency: 'USD', purpose: o.purpose || 'self', paidAt: o.creditedAt || o.createdAt, student: !!o.student,
       }));
   }
   const pool = () => ({ ...store.pool });

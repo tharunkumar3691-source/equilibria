@@ -9,7 +9,7 @@
 //   GET  /api/health                       for the host's health checks
 //   /api/gemini/...                        the Gemini proxy, allowed only within a pass or the free assistant allowance
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { createCreditStore, packById, PACKS, type CreditStore, type Purpose } from './credits.ts';
+import { createCreditStore, packById, PACKS, STUDENT_DISCOUNT, type CreditStore, type Purpose } from './credits.ts';
 import { createGeminiProxy, geminiKeys } from './geminiProxy.ts';
 import { captureOrder, createOrder, PayPalError, paypalConfig, verifyWebhook, type CaptureResult } from './paypal.ts';
 
@@ -158,6 +158,7 @@ export function createApi(env: Record<string, string | undefined>) {
         ...summary(id),
         freeCredits: store.freeCredits,
         packs: PACKS,
+        studentDiscount: STUDENT_DISCOUNT,
         paypal: paypal ? { clientId: paypal.clientId, environment: 'sandbox' } : null,
         ai: { keys: keys.length },
       });
@@ -204,12 +205,15 @@ export function createApi(env: Record<string, string | undefined>) {
           const pack = packById(body.pack);
           if (!pack) { json(res, 400, { error: 'UNKNOWN_PACK', message: `There is no "${body.pack}" pack.` }); return; }
           const purpose: Purpose = body.purpose === 'pool' ? 'pool' : 'self';
+          // The student price is for students buying for themselves; gifts to the pool are paid in full
+          const student = body.student === true && purpose === 'self';
+          const amount = student ? pack.studentPrice : pack.price;
           const description = purpose === 'pool'
             ? `Equilibria: sponsor ${pack.credits} credits for students`
-            : `Equilibria ${pack.label}: ${pack.credits} credits`;
-          const orderId = await createOrder(paypal, { amount: pack.price, description, packId: pack.id, device: id });
-          store.recordOrder(orderId, { device: id, pack: pack.id, purpose, credits: pack.credits, amount: pack.price, status: 'created', createdAt: Date.now() });
-          json(res, 200, { id: orderId, pack: pack.id, purpose, credits: pack.credits, price: pack.price });
+            : `Equilibria ${pack.label}: ${pack.credits} credits${student ? ` (student price, ${STUDENT_DISCOUNT}% off)` : ''}`;
+          const orderId = await createOrder(paypal, { amount, description, packId: pack.id, device: id });
+          store.recordOrder(orderId, { device: id, pack: pack.id, purpose, student, credits: pack.credits, amount, status: 'created', createdAt: Date.now() });
+          json(res, 200, { id: orderId, pack: pack.id, purpose, student, credits: pack.credits, price: amount });
           return;
         }
         const capture = /^\/api\/paypal\/orders\/([\w-]{5,64})\/capture$/.exec(path);

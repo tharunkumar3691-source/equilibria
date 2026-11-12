@@ -4,8 +4,10 @@ import {
 } from 'lucide-react';
 import { CardWindow } from './CardWindow';
 import {
-  Balance, capturePayPalOrder, claimFromPool, createPayPalOrder, CreditError, CreditStatus, loadPayPalSdk, PreparedOrder, Purchase, Purpose
+  Balance, capturePayPalOrder, claimFromPool, createPayPalOrder, CreditError, CreditStatus, loadPayPalSdk, Pack, PreparedOrder, Purchase, Purpose
 } from '../lib/credits';
+
+const STUDENT_KEY = 'equilibria.student';
 
 const paidOn = (at: number) => new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -31,7 +33,10 @@ const Receipt: React.FC<{ purchase: Purchase }> = ({ purchase }) => (
   <div className="mt-6 mx-auto max-w-[420px] text-left rounded-2xl border border-white/[0.09] bg-slate-950/50 overflow-hidden">
     <div className="flex items-center justify-between gap-3 px-4 py-3 bg-white/[0.03] border-b border-white/[0.07]">
       <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-100"><ReceiptIcon className="w-4 h-4 text-amber-200" /> PayPal receipt</span>
-      <span className="text-[11.5px] px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-200 border border-emerald-300/20">Completed</span>
+      <span className="inline-flex items-center gap-1.5">
+        {purchase.student && <span className="text-[11.5px] px-2 py-0.5 rounded-full bg-sky-400/15 text-sky-200 border border-sky-300/20">Student price</span>}
+        <span className="text-[11.5px] px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-200 border border-emerald-300/20">Completed</span>
+      </span>
     </div>
     <div className="px-4 py-2">
       <div className="flex items-center justify-between gap-3 py-2">
@@ -142,14 +147,23 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const [message, setMessage] = useState<string | null>(null);
   const [result, setResult] = useState<{ added: number; purpose: Purpose; receipt?: Purchase } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // "I'm a student": 60% off for students buying for themselves (remembered in this browser)
+  const [student, setStudentState] = useState<boolean>(() => {
+    if (request.order) return !!request.order.student;
+    try { return localStorage.getItem(STUDENT_KEY) === '1'; } catch { return false; }
+  });
+  const setStudent = (on: boolean) => {
+    setStudentState(on);
+    try { localStorage.setItem(STUDENT_KEY, on ? '1' : '0'); } catch { /* Not remembered: fine */ }
+  };
   const [claiming, setClaiming] = useState(false);
   const holder = useRef<HTMLDivElement>(null);
   // The assistant's order is used once, and only while the same pack and purpose are chosen
   const prepared = useRef<PreparedOrder | null>(request.order ?? null);
   // PayPal's buttons are drawn once; they read the current choice when clicked, so changing the pack or
   // who it is for is instant instead of reloading PayPal
-  const choice = useRef({ packId, purpose });
-  choice.current = { packId, purpose };
+  const choice = useRef({ packId, purpose, student });
+  choice.current = { packId, purpose, student };
   const [sdk, setSdk] = useState<any>(null);          // PayPal's SDK, once loaded
   const [cardOpen, setCardOpen] = useState(false);    // The "Pay by card" window
 
@@ -157,10 +171,11 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const createOrderId = async () => {
     setMessage(null);
     const { packId: chosenPack, purpose: chosenPurpose } = choice.current;
+    const chosenStudent = choice.current.student && chosenPurpose === 'self';
     const ready = prepared.current;
     prepared.current = null;
-    if (ready && ready.pack === chosenPack && ready.purpose === chosenPurpose) return ready.id;
-    try { return (await createPayPalOrder(chosenPack, chosenPurpose)).id; }
+    if (ready && ready.pack === chosenPack && ready.purpose === chosenPurpose && !!ready.student === chosenStudent) return ready.id;
+    try { return (await createPayPalOrder(chosenPack, chosenPurpose, chosenStudent)).id; }
     catch (error: any) { setMessage(error.message); throw error; }
   };
 
@@ -171,8 +186,8 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
       const paid = await capturePayPalOrder(orderId);
       // The receipt: the server's record of this order, else what the capture just said
       const receipt = paid.purchases?.find(p => p.orderId === orderId) ?? (paid.captureId ? {
-        orderId, captureId: paid.captureId, pack: pack?.label ?? '', credits: paid.added || 0, amount: pack?.price ?? '',
-        currency: 'USD', purpose: paid.purpose, paidAt: Date.now(),
+        orderId, captureId: paid.captureId, pack: pack?.label ?? '', credits: paid.added || 0, amount: pack ? priceOf(pack) : '',
+        currency: 'USD', purpose: paid.purpose, paidAt: Date.now(), student: studentPrice,
       } : undefined);
       setResult({ added: paid.added || 0, purpose: paid.purpose, receipt });
       setCardOpen(false);
@@ -282,7 +297,11 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const pack = packs.find(p => p.id === packId);
   const sponsoring = purpose === 'pool';
   const look = lookOf(packId, sponsoring);
-  // The best price per credit, to mark the pack that saves the most
+  // Students buying for themselves pay the student price; gifts are always full price
+  const discount = status?.studentDiscount ?? 60;
+  const studentPrice = student && !sponsoring;
+  const priceOf = (p: Pack) => (studentPrice ? p.studentPrice : p.price);
+  // The best price per credit, to mark the pack that saves the most (the same either way)
   const perCredit = (p: { price: string; credits: number }) => Number(p.price) / p.credits;
   const dearest = packs.length ? Math.max(...packs.map(perCredit)) : 0;
   const busy = phase === 'paying';
@@ -400,6 +419,30 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
               ))}
             </div>
 
+            {/* Students: 60% off, for themselves */}
+            {!sponsoring && (
+              <button
+                role="switch"
+                aria-checked={student}
+                onClick={() => setStudent(!student)}
+                disabled={busy}
+                className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3.5 border text-left transition-colors ${student ? 'border-emerald-300/40' : 'border-white/[0.08] hover:border-white/20'}`}
+                style={{ background: student ? 'linear-gradient(135deg, rgba(106,162,118,0.24), rgba(138,92,246,0.12))' : 'rgba(0,0,0,0.18)' }}
+              >
+                <span className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-xl ${student ? 'bg-emerald-400/25 text-emerald-100' : 'bg-white/[0.06] text-slate-300'}`}><GraduationCap className="w-5 h-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-slate-50">
+                    I'm a student
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide text-slate-900" style={{ background: 'linear-gradient(135deg, #cfe5d2, #86bb90)' }}>{discount}% off</span>
+                  </span>
+                  <span className="block text-[13px] leading-snug text-slate-300">{student ? 'Student prices are on for every pack.' : 'Students pay less than half price for every pack.'}</span>
+                </span>
+                <span className={`shrink-0 relative h-6 w-11 rounded-full transition-colors ${student ? 'bg-emerald-500' : 'bg-white/15'}`} aria-hidden="true">
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-[#ffffff] shadow transition-all ${student ? 'left-[22px]' : 'left-0.5'}`}></span>
+                </span>
+              </button>
+            )}
+
             {/* Gifting, explained: where the money goes and who it helps */}
             {sponsoring && (
               <div className="rounded-2xl border border-rose-200/15 p-4 sm:p-5" style={{ background: 'linear-gradient(150deg, rgba(196,113,107,0.14), rgba(106,162,118,0.1))' }}>
@@ -476,8 +519,9 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                       {p.credits}<span className="ml-1.5 text-[15px] sm:text-[16px] text-slate-300">credits</span>
                     </span>
                     <span className="mt-1 flex flex-wrap items-baseline gap-x-2">
-                      <span className="text-[20px] sm:text-[22px] font-semibold text-white tabular-nums">${p.price}</span>
-                      <span className="text-[12px] sm:text-[13px] text-slate-400 tabular-nums">${perCredit(p).toFixed(2)} each</span>
+                      <span className="text-[20px] sm:text-[22px] font-semibold text-white tabular-nums">${priceOf(p)}</span>
+                      {studentPrice && <span className="text-[14px] text-slate-400 line-through tabular-nums" aria-label={`was $${p.price}`}>${p.price}</span>}
+                      <span className="text-[12px] sm:text-[13px] text-slate-400 tabular-nums">${(Number(priceOf(p)) / p.credits).toFixed(studentPrice ? 3 : 2)} each</span>
                     </span>
                     <span className="mt-2 block text-[13px] leading-snug text-slate-300">
                       {sponsoring ? `A free day of physics for about ${plural(studentDays(p.credits), 'student', 'students')}` : p.note}
@@ -496,7 +540,10 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                   <span className="font-semibold tabular-nums" style={{ color: tinted(look.text) }}>{(sponsoring ? poolCredits : credits) + pack.credits}</span>
                   <span className="text-slate-400"> credits</span>
                 </span>
-                <span className="text-[16px] sm:text-[17px] font-semibold text-white tabular-nums">${pack.price}</span>
+                <span className="text-right">
+                  <span className="block text-[16px] sm:text-[17px] font-semibold text-white tabular-nums">${priceOf(pack)}</span>
+                  {studentPrice && <span className="block text-[11.5px] text-emerald-200 tabular-nums">you save ${(Number(pack.price) - Number(pack.studentPrice)).toFixed(2)}</span>}
+                </span>
               </div>
             )}
 
@@ -522,7 +569,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                     frame keeps a light colour scheme, as its page has, so the browser draws it transparent
                     over the dark panel instead of on a white box */}
                 <div className="rounded-2xl bg-[var(--panel-solid)] border border-white/[0.08] p-3 space-y-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]">
-                  <div ref={holder} style={{ colorScheme: 'light' }} aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
+                  <div ref={holder} style={{ colorScheme: 'light' }} aria-label={pack ? `Pay $${priceOf(pack)} with PayPal` : 'Pay with PayPal'}></div>
                   <button
                     onClick={() => { setMessage(null); setCardOpen(true); }}
                     disabled={!sdk || phase !== 'ready'}
@@ -537,7 +584,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
             {cardOpen && sdk && pack && (
               <CardWindow
                 paypal={sdk}
-                price={pack.price}
+                price={priceOf(pack)}
                 credits={pack.credits}
                 gift={sponsoring}
                 colours={look}
@@ -576,7 +623,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                     {purchases.map(p => (
                       <li key={p.orderId} className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-1.5">
                         <div className="flex items-center justify-between gap-3 py-1.5">
-                          <span className="text-[13px] text-slate-100">{p.purpose === 'pool' ? `Gift · ${p.credits} credits` : `${p.pack} · ${p.credits} credits`}<span className="block text-[11.5px] text-slate-400">{paidOn(p.paidAt)}</span></span>
+                          <span className="text-[13px] text-slate-100">{p.purpose === 'pool' ? `Gift · ${p.credits} credits` : `${p.pack} · ${p.credits} credits${p.student ? ' · student price' : ''}`}<span className="block text-[11.5px] text-slate-400">{paidOn(p.paidAt)}</span></span>
                           <span className="text-[14px] font-semibold text-white tabular-nums">${p.amount}</span>
                         </div>
                         {p.captureId && <PayPalId label="Transaction ID" value={p.captureId} />}

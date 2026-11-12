@@ -1,7 +1,7 @@
 // The page's side of credits and PayPal (the server side is server/api.ts). Balances live on the server;
 // the page only asks for them, spends one when a generation starts, and reports how the generation ended.
 
-export interface Pack { id: string; credits: number; price: string; label: string; note: string }
+export interface Pack { id: string; credits: number; price: string; studentPrice: string; label: string; note: string }
 export type Purpose = 'self' | 'pool';
 export interface PoolStatus {
   credits: number;     // Credits waiting for students
@@ -20,16 +20,17 @@ export interface CreditStatus {
   pool: PoolStatus;               // The pay-it-forward pool for students who cannot pay
   freeCredits: number;
   packs: Pack[];
+  studentDiscount?: number;       // Percent off for students (60)
   paypal: { clientId: string; environment: 'sandbox' } | null;
   ai: { keys: number };
 }
 // A paid PayPal order: the receipt, with PayPal's order and capture (transaction) ids
 export interface Purchase {
-  orderId: string; captureId: string; pack: string; credits: number; amount: string; currency: string; purpose: Purpose; paidAt: number;
+  orderId: string; captureId: string; pack: string; credits: number; amount: string; currency: string; purpose: Purpose; paidAt: number; student?: boolean;
 }
 export type Balance = Pick<CreditStatus, 'credits' | 'purchased' | 'sponsored' | 'assistant' | 'pool' | 'purchases'>;
 // A PayPal order made before the PayPal window opens (by the assistant), so the buttons pay exactly that order
-export interface PreparedOrder { id: string; pack: string; purpose: Purpose; credits: number; price: string }
+export interface PreparedOrder { id: string; pack: string; purpose: Purpose; student?: boolean; credits: number; price: string }
 
 export class CreditError extends Error {
   code: string;
@@ -70,8 +71,8 @@ export const finishGeneration = (pass: string, ok: boolean) =>
 // Takes today's share of the student pool (only when this browser has no credits of its own)
 export const claimFromPool = () => request<Balance & { claimed: number }>('/api/pool/claim', {});
 
-export const createPayPalOrder = (pack: string, purpose: Purpose = 'self') =>
-  request<PreparedOrder>('/api/paypal/orders', { pack, purpose });
+export const createPayPalOrder = (pack: string, purpose: Purpose = 'self', student = false) =>
+  request<PreparedOrder>('/api/paypal/orders', { pack, purpose, student });
 export const capturePayPalOrder = (orderId: string) =>
   request<Balance & { added: number; purpose: Purpose; orderId?: string; captureId?: string; alreadyCredited?: boolean }>(`/api/paypal/orders/${encodeURIComponent(orderId)}/capture`, {});
 
