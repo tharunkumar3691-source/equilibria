@@ -21,7 +21,7 @@ export const THEMES: Theme[] = [
 ];
 
 const KEY = 'equilibria.theme';
-const DEFAULT: ThemeId = 'purple';
+const DEFAULT: ThemeId = 'dark';
 
 export const savedTheme = (): ThemeId => {
   try {

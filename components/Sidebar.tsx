@@ -260,7 +260,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       hint: credits > 0 ? `${credits} ${credits === 1 ? 'credit' : 'credits'} left. Buy more, or gift some to students, with PayPal.` : 'No credits left: get more with PayPal',
       onSelect: onOpenCredits, onPointerEnter: onWarmCredits });
   }
-  const themeNow = THEMES.find(t => t.id === theme) ?? THEMES[2];
+  const themeNow = THEMES.find(t => t.id === theme) ?? THEMES[1];
   actions.push({ id: 'theme', label: 'Theme', icon: Palette, accent: themeNow.swatch[1], active: !!themeAnchor,
     hint: `Colour theme: ${themeNow.label}`,
     onSelect: (e) => { const r = e.currentTarget.getBoundingClientRect(); setThemeAnchor(a => (a ? null : r)); } });
