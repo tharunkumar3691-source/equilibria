@@ -63,12 +63,12 @@ const panel = "shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.
 const panelTitle = "text-[14px] font-medium text-slate-200 flex items-center gap-2";
 
 // The menu bar's sections; one is shown beside the bar at a time
-type Section = 'create' | 'demos' | 'library' | 'about';
+type Section = 'create' | 'demos' | 'library';
 const SECTION_KEY = 'equilibria.sidebar.section';
 const savedSection = (): Section => {
   try {
     const s = localStorage.getItem(SECTION_KEY);
-    if (s === 'create' || s === 'demos' || s === 'library' || s === 'about') return s;
+    if (s === 'create' || s === 'demos' || s === 'library') return s;
   } catch { /* Storage blocked: start at Create */ }
   return 'create';
 };
@@ -214,12 +214,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [complaining, setComplaining] = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const importRef = useRef<HTMLInputElement>(null);
-  // The section open last time, except an empty Scene: with nothing to show yet, Create comes first
-  const [section, setSection] = useState<Section>(() => {
-    const saved = savedSection();
-    return saved === 'about' && !simulationData ? 'create' : saved;
-  });
+  const [section, setSection] = useState<Section>(savedSection); // The section open last time
   const [unseen, setUnseen] = useState(false); // A new scene arrived while another section was shown
+  const content = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<ThemeId>(savedTheme);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null); // Where the theme picker opens from
   const pickTheme = (id: ThemeId) => { applyTheme(id); setTheme(id); };
@@ -229,31 +226,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
     try { localStorage.setItem(SECTION_KEY, next); } catch { /* Not remembered: fine */ }
   };
 
-  // Starting a generation from Create shows its progress (and then its story) under Scene
-  useEffect(() => { if (loading && section === 'create') show('about'); }, [loading]);
-  // A problem with a request is explained under Scene
-  useEffect(() => { if (error && section === 'create') show('about'); }, [error]);
-  // Opening a demo (from Demos or the welcome screen) shows its description at once; any other scene that
-  // arrives while another section is open gets a dot on Scene until it is looked at
+  // The open scene's description leads Create. Opening a demo (from Demos or the welcome screen) or a saved
+  // simulation goes there at once, scrolled to the top; any other new scene (an AI edit) that arrives while
+  // another section is open gets a dot on Create until it is looked at
   useEffect(() => {
-    if (!simulationData || section === 'about') return;
-    if (activeDemoId) show('about');
-    else setUnseen(true);
+    if (!simulationData) return;
+    if (section === 'create' || activeDemoId) {
+      show('create');
+      content.current?.scrollTo({ top: 0 });
+    } else setUnseen(true);
   }, [simulationData]);
-  useEffect(() => { if (section === 'about') setUnseen(false); }, [section]);
+  useEffect(() => { if (section === 'create') setUnseen(false); }, [section]);
+  const openSaved = (entry: LibraryEntry) => { onOpenEntry(entry); show('create'); content.current?.scrollTo({ top: 0 }); };
 
   // The menu bar, built from what the app can do right now
   const sections: MenuItem[] = [
     { id: 'create', label: 'Create', icon: Wand2, accent: '#9f7bff', tour: 'create',
-      hint: 'Solve a textbook problem, or turn a video or a sentence into a 3D scene', onSelect: () => show('create') },
+      dot: loading ? 'busy' : error ? 'alert' : unseen ? 'new' : undefined,
+      hint: loading ? (loadingLabel || 'Working on it…')
+        : simulationData ? `About "${simulationData.title || 'this scene'}", and making new scenes`
+        : 'Solve a textbook problem, or turn a video or a sentence into a 3D scene',
+      onSelect: () => show('create') },
     { id: 'demos', label: 'Demos', icon: Compass, accent: '#d084e6', tour: 'demos', badge: demos.length,
       hint: 'Ready-made scenes that load instantly, free', onSelect: () => show('demos') },
     { id: 'library', label: 'Library', icon: BookMarked, accent: '#8f99ee', tour: 'library', badge: library.length || undefined,
       hint: 'Save, share, export and open your simulations', onSelect: () => show('library') },
-    { id: 'about', label: 'Scene', icon: BookOpen, accent: '#f2a7c3',
-      dot: loading ? 'busy' : error ? 'alert' : unseen ? 'new' : undefined,
-      hint: loading ? (loadingLabel || 'Working on it…') : simulationData ? `About "${simulationData.title || 'this scene'}", and how it turned out` : 'What happens in the scene, and why',
-      onSelect: () => show('about') },
   ].map(item => ({ ...item, active: item.id === section }) as MenuItem);
 
   const actions: MenuItem[] = [];
@@ -373,11 +370,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {themeAnchor && <ThemePicker anchor={themeAnchor} value={theme} onPick={pickTheme} onClose={() => setThemeAnchor(null)} />}
 
       {/* The chosen section */}
-      <div className="flex-1 min-w-0 h-full flex flex-col gap-3 overflow-y-auto overscroll-contain pr-0.5">
+      <div ref={content} className="flex-1 min-w-0 h-full flex flex-col gap-3 overflow-y-auto overscroll-contain pr-0.5">
       <div className="shrink-0 flex items-start justify-between gap-2 px-1 pt-1">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Equilibria</p>
-          <h2 className="font-display text-[22px] leading-tight text-slate-50">{current.label === 'Scene' ? 'This scene' : current.label}</h2>
+          <h2 className="font-display text-[22px] leading-tight text-slate-50">{current.label}</h2>
           <p className="mt-0.5 text-[12px] leading-snug text-slate-400">{current.hint}</p>
         </div>
         {onClose && (
@@ -386,6 +383,103 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
       </div>
+
+      {/* About this scene: what is happening and why, in plain words. It leads Create while a scene is open */}
+      {section === 'create' && (simulationData || loading || error) && (
+      <div className="shrink-0 min-h-[120px] max-h-[48vh] bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl flex flex-col overflow-hidden shadow-calm">
+         <div className="shrink-0 flex items-center px-4 pt-3.5 pb-2 select-none">
+            <span className={`${panelTitle} min-w-0`}><BookOpen className="w-3.5 h-3.5 shrink-0 text-blue-300" /> <span className="truncate">{simulationData && !loading ? (simulationData.title || 'What happens, and why') : 'What happens, and why'}</span></span>
+         </div>
+
+         <div className="flex-1 overflow-y-auto px-4 pb-4 text-[13px] leading-relaxed">
+            {!simulationData && !loading && !error && (
+                <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-2">
+                    <span className="w-9 h-9 rounded-full bg-blue-400/10 flex items-center justify-center"><Sparkles className="w-4 h-4 text-blue-300/80" /></span>
+                    <span className="text-slate-400">Choose a demo or describe a scene. What happens in it, and why, will appear here.</span>
+                </div>
+            )}
+
+            {loading && (
+                <div className="flex gap-2.5 items-center text-blue-200">
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-blue-400/25 border-t-blue-300 rounded-full animate-spin"></span>
+                    <span>{loadingLabel || 'Working on it…'}</span>
+                </div>
+            )}
+
+            {error && !loading && (
+                <div className="text-red-200 bg-red-400/[0.07] p-3 rounded-xl border border-red-300/15 break-words">
+                    <span className="font-medium block mb-1 text-red-300">Something needs attention</span>
+                    {error}
+                </div>
+            )}
+
+            {simulationData && !loading && (
+                <div>
+                    {typedText.split('\n').map((line, i) => {
+                        if (!line.trim()) return <div key={i} className="h-2"></div>;
+                        if (NOISE.test(line.trim())) return null;
+                        return (
+                            <div key={i} className={`${getLineClass(line)} break-words`}>
+                                {lineText(line)}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+         </div>
+      </div>
+      )}
+
+      {/* Rating: generated scenes only (the built-in demos are not rated) */}
+      {section === 'create' && simulationData && !simulationData.demoMode && !loading && (
+         <div className="shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl px-4 py-2.5 shadow-calm">
+             <div className="flex items-center justify-between gap-2">
+                 <span className="text-[13px] text-slate-300">{rating === 'up' ? 'Glad you liked it' : rating === 'down' ? 'Thanks, noted for next time' : 'How did this scene turn out?'}</span>
+                 <div className="flex gap-1">
+                     <button
+                         onClick={rateUp}
+                         aria-pressed={rating === 'up'}
+                         title={rating === 'up' ? 'Remove your like' : 'Good: use it as an example for similar requests'}
+                         aria-label="Good scene"
+                         className={`p-2 rounded-md transition-colors ${rating === 'up' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-emerald-300 hover:bg-white/5'}`}
+                     >
+                         <ThumbsUp className="w-4 h-4" />
+                     </button>
+                     <button
+                         onClick={rateDown}
+                         aria-pressed={rating === 'down'}
+                         aria-expanded={complaining}
+                         title={rating === 'down' ? 'Remove your rating' : 'Not good: say what was wrong'}
+                         aria-label="Poor scene"
+                         className={`p-2 rounded-md transition-colors ${rating === 'down' || complaining ? 'bg-red-500/20 text-red-300' : 'text-slate-400 hover:text-red-300 hover:bg-white/5'}`}
+                     >
+                         <ThumbsDown className="w-4 h-4" />
+                     </button>
+                 </div>
+             </div>
+             {complaining && (
+                 <div className="mt-2 space-y-2">
+                     <span className="block text-[12px] text-slate-400">What was wrong? Pick any that apply.</span>
+                     <div className="flex flex-wrap gap-1">
+                         {(Object.keys(COMPLAINTS) as Complaint[]).map(c => (
+                             <button
+                                 key={c}
+                                 onClick={() => toggleComplaint(c)}
+                                 aria-pressed={complaints.includes(c)}
+                                 className={`px-2.5 py-1 rounded-full text-[12px] border transition-colors ${complaints.includes(c) ? 'bg-red-500/20 border-red-400/40 text-red-200' : 'bg-slate-800/70 border-white/5 text-slate-400 hover:text-white'}`}
+                             >
+                                 {COMPLAINTS[c]}
+                             </button>
+                         ))}
+                     </div>
+                     <div className="flex justify-end gap-1.5">
+                         <button onClick={() => setComplaining(false)} className="px-3 py-1.5 rounded-md text-[12px] text-slate-300 hover:bg-white/10">Cancel</button>
+                         <button onClick={sendComplaints} className="px-3 py-1.5 rounded-md bg-red-600/80 hover:bg-red-500 text-white text-[12px] font-semibold">Send</button>
+                     </div>
+                 </div>
+             )}
+         </div>
+      )}
 
       {/* Create Panel: from a video or from a description */}
       {section === 'create' && (
@@ -647,7 +741,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {library.map(entry => (
                     <li key={entry.id} className="group flex items-center gap-1 rounded-lg bg-slate-950/40 border border-white/5 hover:border-white/15">
                         <button
-                            onClick={() => onOpenEntry(entry)}
+                            onClick={() => openSaved(entry)}
                             disabled={loading}
                             className="flex-1 min-w-0 flex items-center gap-2 px-2.5 py-2 text-left disabled:opacity-50"
                             title={`Open "${entry.name}"`}
@@ -671,103 +765,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ))}
             </ul>
         )}
-      </div>
-      )}
-
-      {/* Rating: generated scenes only (the built-in demos are not rated) */}
-      {section === 'about' && simulationData && !simulationData.demoMode && !loading && (
-         <div className="shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl px-4 py-2.5 shadow-calm">
-             <div className="flex items-center justify-between gap-2">
-                 <span className="text-[13px] text-slate-300">{rating === 'up' ? 'Glad you liked it' : rating === 'down' ? 'Thanks, noted for next time' : 'How did this scene turn out?'}</span>
-                 <div className="flex gap-1">
-                     <button
-                         onClick={rateUp}
-                         aria-pressed={rating === 'up'}
-                         title={rating === 'up' ? 'Remove your like' : 'Good: use it as an example for similar requests'}
-                         aria-label="Good scene"
-                         className={`p-2 rounded-md transition-colors ${rating === 'up' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-emerald-300 hover:bg-white/5'}`}
-                     >
-                         <ThumbsUp className="w-4 h-4" />
-                     </button>
-                     <button
-                         onClick={rateDown}
-                         aria-pressed={rating === 'down'}
-                         aria-expanded={complaining}
-                         title={rating === 'down' ? 'Remove your rating' : 'Not good: say what was wrong'}
-                         aria-label="Poor scene"
-                         className={`p-2 rounded-md transition-colors ${rating === 'down' || complaining ? 'bg-red-500/20 text-red-300' : 'text-slate-400 hover:text-red-300 hover:bg-white/5'}`}
-                     >
-                         <ThumbsDown className="w-4 h-4" />
-                     </button>
-                 </div>
-             </div>
-             {complaining && (
-                 <div className="mt-2 space-y-2">
-                     <span className="block text-[12px] text-slate-400">What was wrong? Pick any that apply.</span>
-                     <div className="flex flex-wrap gap-1">
-                         {(Object.keys(COMPLAINTS) as Complaint[]).map(c => (
-                             <button
-                                 key={c}
-                                 onClick={() => toggleComplaint(c)}
-                                 aria-pressed={complaints.includes(c)}
-                                 className={`px-2.5 py-1 rounded-full text-[12px] border transition-colors ${complaints.includes(c) ? 'bg-red-500/20 border-red-400/40 text-red-200' : 'bg-slate-800/70 border-white/5 text-slate-400 hover:text-white'}`}
-                             >
-                                 {COMPLAINTS[c]}
-                             </button>
-                         ))}
-                     </div>
-                     <div className="flex justify-end gap-1.5">
-                         <button onClick={() => setComplaining(false)} className="px-3 py-1.5 rounded-md text-[12px] text-slate-300 hover:bg-white/10">Cancel</button>
-                         <button onClick={sendComplaints} className="px-3 py-1.5 rounded-md bg-red-600/80 hover:bg-red-500 text-white text-[12px] font-semibold">Send</button>
-                     </div>
-                 </div>
-             )}
-         </div>
-      )}
-
-      {/* About this scene: what is happening and why, in plain words */}
-      {section === 'about' && (
-      <div className="flex-1 min-h-[170px] bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl flex flex-col overflow-hidden shadow-calm">
-         <div className="shrink-0 flex items-center px-4 pt-3.5 pb-2 select-none">
-            <span className={`${panelTitle} min-w-0`}><BookOpen className="w-3.5 h-3.5 shrink-0 text-blue-300" /> <span className="truncate">{simulationData && !loading ? (simulationData.title || 'What happens, and why') : 'What happens, and why'}</span></span>
-         </div>
-
-         <div className="flex-1 overflow-y-auto px-4 pb-4 text-[13px] leading-relaxed">
-            {!simulationData && !loading && !error && (
-                <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-2">
-                    <span className="w-9 h-9 rounded-full bg-blue-400/10 flex items-center justify-center"><Sparkles className="w-4 h-4 text-blue-300/80" /></span>
-                    <span className="text-slate-400">Choose a demo or describe a scene. What happens in it, and why, will appear here.</span>
-                </div>
-            )}
-
-            {loading && (
-                <div className="flex gap-2.5 items-center text-blue-200">
-                    <span className="inline-block w-3.5 h-3.5 border-2 border-blue-400/25 border-t-blue-300 rounded-full animate-spin"></span>
-                    <span>{loadingLabel || 'Working on it…'}</span>
-                </div>
-            )}
-
-            {error && !loading && (
-                <div className="text-red-200 bg-red-400/[0.07] p-3 rounded-xl border border-red-300/15 break-words">
-                    <span className="font-medium block mb-1 text-red-300">Something needs attention</span>
-                    {error}
-                </div>
-            )}
-
-            {simulationData && !loading && (
-                <div>
-                    {typedText.split('\n').map((line, i) => {
-                        if (!line.trim()) return <div key={i} className="h-2"></div>;
-                        if (NOISE.test(line.trim())) return null;
-                        return (
-                            <div key={i} className={`${getLineClass(line)} break-words`}>
-                                {lineText(line)}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-         </div>
       </div>
       )}
 
