@@ -14,8 +14,9 @@ import {
 import { downloadBlob } from './lib/capture';
 import { getRating, likeScene, dislikeScene, clearRating, Rating, Complaint } from './lib/feedback';
 import { LibraryEntry, SimulationData } from './types';
-import { Play, AlertCircle, Menu, Check, ShieldAlert, Sigma } from 'lucide-react';
+import { Play, AlertCircle, Menu, Check, ShieldAlert, Sigma, Coins } from 'lucide-react';
 import { LogoMark, Wordmark } from './components/Logo';
+import { Tooltips } from './components/Tooltips';
 import { AiCommandBar } from './components/AiCommandBar';
 import { useSceneEditor } from './lib/useSceneEditor';
 import { Balance, CreditError, CreditStatus, finishGeneration, loadCredits, PreparedOrder, spendCredit } from './lib/credits';
@@ -494,15 +495,16 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen bg-science-950 text-slate-200 font-sans relative overflow-hidden">
-      {/* Backdrop: faint, slowly breathing glows (see index.html) */}
-      <div className="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
+      {/* Backdrop: faint glows that breathe slowly on the welcome screen. They hold still while a
+          simulation runs, so the page only redraws what the simulation needs (see index.css). */}
+      <div className={`absolute inset-0 bg-grid-pattern pointer-events-none z-0 ${simulationData ? 'bg-still' : ''}`}></div>
 
       {/* Main Layout */}
       <div className="z-10 flex w-full h-full p-2 sm:p-4 gap-4">
 
         {/* Left: Sidebar / Control Center. A slide-over drawer on small screens, a fixed column on large ones. */}
         {menuOpen && <div className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs lg:hidden" onClick={() => setMenuOpen(false)}></div>}
-        <div className={`fixed inset-y-0 left-0 z-40 w-[min(88vw,340px)] p-3 bg-slate-950/95 border-r border-white/[0.06] transition-transform duration-500 ease-out lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:p-0 lg:bg-transparent lg:border-0 lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`fixed inset-y-0 left-0 z-40 w-[min(88vw,340px)] p-3 bg-slate-950/95 border-r border-white/[0.06] transition-transform duration-500 ease-out lg:static lg:z-auto lg:w-[320px] xl:w-[344px] lg:shrink-0 lg:p-0 lg:bg-transparent lg:border-0 lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <Sidebar
             loading={loading}
             loadingLabel={loadingLabel}
@@ -542,7 +544,16 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             <Wordmark />
-            {simulationData?.title && <span className="ml-auto truncate text-xs text-slate-400">{simulationData.title}</span>}
+            <span className="ml-auto min-w-0 truncate text-xs text-slate-400">{simulationData?.title}</span>
+            {apiKeyAvailable && creditStatus && (
+              <button
+                onClick={() => setCreditsOpen({ reason: 'browse' })}
+                className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] font-medium text-amber-200 border border-amber-300/25 bg-amber-400/[0.08] hover:bg-amber-400/[0.15]"
+                aria-label={`${creditStatus.credits} credits. Get more`}
+              >
+                <Coins className="w-3.5 h-3.5" /> <span className="tabular-nums">{creditStatus.credits}</span>
+              </button>
+            )}
           </div>
 
           {error && (
@@ -721,8 +732,11 @@ export default function App() {
         simulationData={simulationData}
         isOpen={chatOpen}
         onOpenChange={setChatOpen}
-        showLauncher={!simulationData}
+        showLauncher={!simulationData && !menuOpen}
       />
+
+      {/* Quick, readable tooltips for every control with a title */}
+      <Tooltips />
     </div>
   );
 }

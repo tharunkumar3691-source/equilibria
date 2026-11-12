@@ -27,7 +27,7 @@ import { SimApi } from '../lib/simApi';
 import { ObjectInspector, ObjectEditInfo } from './ObjectInspector';
 import { ComparePanel } from './ComparePanel';
 import { Stopwatch } from './Stopwatch';
-import { Sliders, RotateCcw, MoveDiagonal, Play, Pause, Sun, Square, Circle, Volume2, VolumeX, MousePointerClick, Gauge, Vibrate, ZoomIn, ZoomOut, Maximize, Minimize, Aperture, LocateFixed, Video, Camera, Ruler, Timer, MoveUpRight, PictureInPicture2, HelpCircle, Eye, Crosshair, PanelRightClose, PanelRightOpen, Sparkles, Check, Hand } from 'lucide-react';
+import { Sliders, RotateCcw, MoveDiagonal, Play, Pause, Sun, Square, Circle, Volume2, VolumeX, MousePointerClick, Gauge, Vibrate, ZoomIn, ZoomOut, Maximize, Minimize, Aperture, LocateFixed, Video, Camera, Ruler, Timer, MoveUpRight, PictureInPicture2, HelpCircle, Eye, Crosshair, PanelRightClose, PanelRightOpen, Sparkles, Check, Hand, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface PhysicsRunnerProps {
   simulationData: SimulationData;
@@ -372,6 +372,29 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   const inspectorRef = useRef<HTMLDivElement>(null);
   // The whole stage (toolbar, view, side panel, status line): what goes full screen
   const stageRef = useRef<HTMLDivElement>(null);
+
+  // The toolbar's middle group scrolls sideways when the window is narrow. Arrows at its edges (and a
+  // fade) show that more tools are there, so none is ever hidden without a sign.
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const [toolsOverflow, setToolsOverflow] = useState({ left: false, right: false });
+  const measureTools = useCallback(() => {
+      const el = toolsRef.current;
+      if (!el) return;
+      const left = el.scrollLeft > 2;
+      const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+      setToolsOverflow(prev => (prev.left === left && prev.right === right ? prev : { left, right }));
+  }, []);
+  useEffect(() => {
+      const el = toolsRef.current;
+      if (!el) return;
+      const observer = new ResizeObserver(measureTools);
+      observer.observe(el);
+      el.addEventListener('scroll', measureTools, { passive: true });
+      return () => { observer.disconnect(); el.removeEventListener('scroll', measureTools); };
+  }, [measureTools]);
+  // Buttons come and go (recording, compare), so measure again after each render; it changes state only on a real change
+  useEffect(measureTools);
+  const scrollTools = (direction: 1 | -1) => toolsRef.current?.scrollBy({ left: direction * 180, behavior: 'smooth' });
 
   // --- SOUND & VIBRATION ---
   // The synthesiser lives in lib/audio.ts and outlives this component, so these only pass settings on.
@@ -2445,7 +2468,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       }
   };
 
-  const barButton = "shrink-0 p-2 rounded-lg transition-colors";
+  const barButton = "shrink-0 p-1.5 xl:p-2 rounded-lg transition-colors";
   const barIdle = "text-slate-400 hover:text-slate-100 hover:bg-white/[0.06]";
   const barOn = "text-sky-300 bg-sky-500/15";
   const divider = <div className="shrink-0 w-px h-6 bg-white/10 mx-0.5"></div>;
@@ -2495,7 +2518,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                      aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
                  >
                      {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                     <span className="hidden sm:inline">{isFullscreen ? 'Exit full screen' : 'Full screen'}</span>
+                     <span className="hidden xl:inline">{isFullscreen ? 'Exit full screen' : 'Full screen'}</span>
                  </button>
              )}
              <button
@@ -2507,16 +2530,41 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                  aria-pressed={realisticEnabled}
                  aria-label="Realistic view"
              >
-                 <Aperture className="w-4 h-4" /> <span className="hidden sm:inline">Realistic</span>
+                 <Aperture className="w-4 h-4" /> <span className="hidden xl:inline">Realistic</span>
              </button>
              {divider}
          </div>
-         <div className="min-w-0 flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-tour="toolbar">
-             <button onClick={() => resetSimulation(true)} className={`${barButton} ${barIdle}`} title="Reset simulation ( R )" aria-label="Reset simulation">
-                 <RotateCcw className="w-[18px] h-[18px]" />
+         {toolsOverflow.left && (
+             <button onClick={() => scrollTools(-1)} className="shrink-0 h-9 px-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.06]" title="More tools" aria-label="Scroll the tools left">
+                 <ChevronLeft className="w-4 h-4" />
              </button>
-             <button onClick={togglePause} className={`${barButton} ${paused ? 'text-amber-300 bg-amber-500/10' : 'text-slate-200 hover:bg-white/[0.06]'}`} title={paused ? "Resume ( Space )" : "Pause ( Space )"} aria-label={paused ? "Resume" : "Pause"}>
-                 {paused ? <Play className="w-[18px] h-[18px] fill-current" /> : <Pause className="w-[18px] h-[18px] fill-current" />}
+         )}
+         <div
+             ref={toolsRef}
+             className="min-w-0 flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+             style={toolsOverflow.left || toolsOverflow.right ? {
+                 maskImage: `linear-gradient(to right, ${toolsOverflow.left ? 'transparent 0, black 20px' : 'black 0'}, ${toolsOverflow.right ? 'black calc(100% - 20px), transparent 100%' : 'black 100%'})`,
+                 WebkitMaskImage: `linear-gradient(to right, ${toolsOverflow.left ? 'transparent 0, black 20px' : 'black 0'}, ${toolsOverflow.right ? 'black calc(100% - 20px), transparent 100%' : 'black 100%'})`
+             } : undefined}
+             onWheel={(e) => {
+                 // A mouse wheel scrolls the tools sideways when they do not all fit
+                 const el = toolsRef.current;
+                 if (el && el.scrollWidth > el.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) el.scrollLeft += e.deltaY;
+             }}
+             data-tour="toolbar"
+         >
+             <button
+                 onClick={togglePause}
+                 className={`shrink-0 flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-[12px] font-medium transition-colors ${paused ? 'text-amber-200 bg-amber-400/15 hover:bg-amber-400/25' : 'text-slate-100 bg-white/[0.06] hover:bg-white/[0.1]'}`}
+                 title={paused ? "Play: let time run again ( Space )" : "Pause: freeze time ( Space )"}
+                 aria-label={paused ? "Play" : "Pause"}
+             >
+                 {paused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4 fill-current" />}
+                 <span className="hidden xl:inline w-9 text-left">{paused ? 'Play' : 'Pause'}</span>
+             </button>
+             <button onClick={() => resetSimulation(true)} className={`${barButton} flex items-center gap-1.5 ${barIdle}`} title="Reset: start the scene again ( R )" aria-label="Reset simulation">
+                 <RotateCcw className="w-[18px] h-[18px]" />
+                 <span className="hidden 2xl:inline text-[12px] font-medium pr-0.5">Reset</span>
              </button>
              <button
                  onClick={toggleArrange}
@@ -2571,17 +2619,24 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                  {muted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />}
              </button>
          </div>
+         {toolsOverflow.right && (
+             <button onClick={() => scrollTools(1)} className="shrink-0 h-9 px-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.06]" title="More tools" aria-label="Scroll the tools right">
+                 <ChevronRight className="w-4 h-4" />
+             </button>
+         )}
 
          <div className="flex-1"></div>
 
          <div className="shrink-0 flex items-center gap-0.5">
-             <button onClick={() => zoomBy(1 / ZOOM_STEP)} className={`${barButton} ${barIdle}`} title="Zoom out ( - )" aria-label="Zoom out">
+             {/* Below xl the wheel, a pinch or the + and - keys zoom, which leaves room for the tools */}
+             <button onClick={() => zoomBy(1 / ZOOM_STEP)} className={`${barButton} ${barIdle} hidden xl:block`} title="Zoom out ( - )" aria-label="Zoom out">
                  <ZoomOut className="w-[18px] h-[18px]" />
              </button>
-             <button onClick={() => zoomBy(ZOOM_STEP)} className={`${barButton} ${barIdle}`} title="Zoom in ( + )" aria-label="Zoom in">
+             <button onClick={() => zoomBy(ZOOM_STEP)} className={`${barButton} ${barIdle} hidden xl:block`} title="Zoom in ( + )" aria-label="Zoom in">
                  <ZoomIn className="w-[18px] h-[18px]" />
              </button>
-             <button onClick={resetView} className={`${barButton} ${barIdle}`} title="Reset view ( 1 )" aria-label="Reset view">
+             {/* On a phone, "Scene view" in the camera menu does the same, which leaves room for the tools */}
+             <button onClick={resetView} className={`${barButton} ${barIdle} hidden sm:block`} title="Reset view ( 1 )" aria-label="Reset view">
                  <LocateFixed className="w-[18px] h-[18px]" />
              </button>
              <div className="relative">
@@ -2603,9 +2658,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                      </div>
                  )}
              </div>
-             {divider}
+             <div className="hidden sm:block">{divider}</div>
+             {/* Help is mostly keyboard shortcuts, so phones find it in the menu instead */}
              {onOpenHelp && (
-                 <button onClick={onOpenHelp} className={`${barButton} ${barIdle}`} title="Keyboard shortcuts and help ( ? )" aria-label="Help">
+                 <button onClick={onOpenHelp} className={`${barButton} ${barIdle} hidden sm:block`} title="Keyboard shortcuts and help ( ? )" aria-label="Help">
                      <HelpCircle className="w-[18px] h-[18px]" />
                  </button>
              )}

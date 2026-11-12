@@ -50,10 +50,13 @@ const PROBLEM_EXAMPLES = [
   { label: 'Elastic collision', text: 'A 0.50 kg ball moving at 4.0 m/s on a smooth horizontal surface collides head-on, elastically, with a 1.5 kg ball at rest. Find the velocity of each ball after the collision.' }
 ];
 
-const smallButton ="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-medium border border-white/[0.06] bg-slate-800/50 text-slate-200 hover:bg-slate-700/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
-// Every section is the same soft, frosted card with a quiet title
+const smallButton ="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-medium border border-white/[0.06] bg-slate-800/50 text-slate-200 hover:bg-slate-700/70 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
+// The one main action of each form: large enough to find at a glance and easy to hit
+const primaryButton = "flex items-center gap-1.5 px-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-[13px] font-medium shadow-calm disabled:opacity-40 disabled:cursor-not-allowed";
+const chip = "px-2.5 py-1 rounded-full text-[12px] text-slate-300 bg-slate-800/40 border border-white/[0.06] hover:text-white hover:border-blue-300/40 hover:bg-slate-800/70 disabled:opacity-40 text-left";
+// Every section is the same soft, frosted card with a clear title
 const panel = "shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl p-4 shadow-calm";
-const panelTitle = "text-[13px] font-medium text-slate-300 flex items-center gap-2";
+const panelTitle = "text-[14px] font-medium text-slate-200 flex items-center gap-2";
 
 // Lines of a scene's description that only announced the machine at work; the story reads better without them
 const NOISE = /^(analysis complete\.?|initiali[sz]ing simulation\.*|waiting for .*\.\.\.)$/i;
@@ -182,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <button
           onClick={() => setMode(id)}
           aria-pressed={mode === id}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${mode === id ? 'bg-slate-700/80 text-slate-50 shadow-xs' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${mode === id ? 'bg-slate-700/80 text-slate-50 shadow-xs' : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]'}`}
       >
           {icon} {label}
       </button>
@@ -195,12 +198,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="shrink-0 flex items-center justify-between px-1.5 pt-1">
         <Wordmark />
         <div className="flex items-center gap-1">
-          <button onClick={onOpenHelp} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5" title="Shortcuts and help ( ? )" aria-label="Help">
-            <HelpCircle className="w-4 h-4" />
+          <button onClick={onOpenHelp} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] font-medium text-slate-300 border border-white/[0.08] hover:text-white hover:bg-white/5" title="Shortcuts, tour and help ( ? )">
+            <HelpCircle className="w-3.5 h-3.5" /> Help
           </button>
           {onClose && (
-            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5" aria-label="Close menu">
-              <X className="w-4 h-4" />
+            <button onClick={onClose} className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-white/5" aria-label="Close menu">
+              <X className="w-5 h-5" />
             </button>
           )}
         </div>
@@ -213,11 +216,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {apiKeyAvailable && credits !== null && (
                 <button
                     onClick={onOpenCredits}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${credits > 0 ? 'text-amber-200 border-amber-300/20 bg-amber-400/[0.06] hover:bg-amber-400/[0.12]' : 'text-amber-100 border-amber-300/40 bg-amber-400/15 hover:bg-amber-400/25'}`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${credits > 0 ? 'text-amber-200 border-amber-300/25 bg-amber-400/[0.08] hover:bg-amber-400/[0.15]' : 'text-amber-100 border-amber-300/50 bg-amber-400/20 hover:bg-amber-400/30'}`}
                     title="Each new scene or solved problem uses 1 credit. Buy more with PayPal."
                     data-tour="credits"
                 >
-                    <Coins className="w-3 h-3" />
+                    <Coins className="w-3.5 h-3.5" />
                     <span className="tabular-nums">{credits}</span> {credits === 1 ? 'credit' : 'credits'}
                     <span className="text-amber-300/70">·</span> {credits > 0 ? 'Get more' : 'Buy'}
                 </button>
@@ -260,8 +263,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 key={example.label}
                                 onClick={() => setProblemText(example.text)}
                                 disabled={loading}
-                                title={example.text}
-                                className="px-2.5 py-1 rounded-full text-[11px] text-slate-400 bg-slate-800/40 border border-white/[0.05] hover:text-slate-100 hover:border-blue-300/30 disabled:opacity-40 text-left"
+                                title={`Try it: ${example.text}`}
+                                className={chip}
                             >
                                 {example.label}
                             </button>
@@ -272,7 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                         onClick={() => photoRef.current?.click()}
                         disabled={loading}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] text-slate-300 border border-white/[0.08] hover:bg-white/5 disabled:opacity-40"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] text-slate-200 border border-white/[0.1] hover:bg-white/5 hover:text-white disabled:opacity-40"
                         title="Add a photo of the problem (you can also paste one into the box)"
                     >
                         <ImagePlus className="w-3.5 h-3.5" /> {photo ? 'Change photo' : 'Photo'}
@@ -287,7 +290,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                         onClick={submitProblem}
                         disabled={loading || (!problemText.trim() && !photo)}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-calm disabled:opacity-40 disabled:cursor-not-allowed"
+                        className={primaryButton}
+                        title="Solve it step by step and check the answer in a 3D simulation ( Ctrl + Enter )"
                     >
                         <Sigma className="w-3.5 h-3.5" /> Solve and simulate
                     </button>
@@ -297,10 +301,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <label className="relative group cursor-pointer block">
                 <div className={`h-24 w-full border border-dashed rounded-xl bg-slate-950/30 flex flex-col items-center justify-center gap-1.5 transition-all duration-300 ${error ? 'border-red-400/30 bg-red-400/5' : 'border-slate-700/80 group-hover:border-blue-400/50 group-hover:bg-blue-400/[0.04]'} ${loading ? 'opacity-50' : ''}`}>
                     <Upload className={`w-5 h-5 transition-colors ${error ? 'text-red-300' : 'text-slate-500 group-hover:text-blue-300'}`} />
-                    <span className={`text-xs font-medium ${error ? 'text-red-300' : 'text-slate-300 group-hover:text-slate-100'}`}>
+                    <span className={`text-[13px] font-medium ${error ? 'text-red-300' : 'text-slate-200 group-hover:text-white'}`}>
                         {error ? 'Try another video' : 'Choose a video'}
                     </span>
-                    <span className="text-[11px] text-slate-500">A few seconds is plenty · up to 20 MB</span>
+                    <span className="text-[12px] text-slate-500">A few seconds is plenty · up to 20 MB</span>
                 </div>
                 <input
                     type="file"
@@ -328,18 +332,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             key={example}
                             onClick={() => setPrompt(example)}
                             disabled={loading}
-                            className="px-2.5 py-1 rounded-full text-[11px] text-slate-400 bg-slate-800/40 border border-white/[0.05] hover:text-slate-100 hover:border-blue-300/30 disabled:opacity-40 text-left"
+                            title={`Try it: ${example}`}
+                            className={chip}
                         >
                             {example.length > 34 ? example.slice(0, 32) + '…' : example}
                         </button>
                     ))}
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-slate-500 tabular-nums">{prompt.length} / {MAX_PROMPT_LENGTH}</span>
+                    <span className="text-[12px] text-slate-500 tabular-nums">{prompt.length} / {MAX_PROMPT_LENGTH}</span>
                     <button
                         onClick={submitPrompt}
                         disabled={loading || !prompt.trim()}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-calm disabled:opacity-40 disabled:cursor-not-allowed"
+                        className={primaryButton}
+                        title="Build this scene as a live 3D simulation ( Ctrl + Enter )"
                     >
                         <Sparkles className="w-3.5 h-3.5" /> Create scene
                     </button>
@@ -360,14 +366,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${quality ? 'left-3.5' : 'left-0.5'}`}></span>
                 </button>
                 <span className="flex flex-col leading-tight" onClick={() => !loading && onQualityChange(!quality)}>
-                    <span className={`flex items-center gap-1 text-[12px] font-medium ${quality ? 'text-violet-300' : 'text-slate-300'}`}><Gem className="w-3 h-3" /> Best quality</span>
-                    <span className="text-[11px] text-slate-500">Takes a little longer and uses more of your quota.</span>
+                    <span className={`flex items-center gap-1 text-[13px] font-medium ${quality ? 'text-violet-300' : 'text-slate-200'}`}><Gem className="w-3.5 h-3.5" /> Best quality</span>
+                    <span className="text-[12px] text-slate-500">Takes a little longer and uses more of your quota.</span>
                 </span>
             </div>
         )}
 
         {!apiKeyAvailable && (
-             <div className="mt-3 text-[11px] text-amber-200/90 bg-amber-400/[0.07] p-2.5 rounded-xl border border-amber-300/15 flex items-start gap-2 leading-snug">
+             <div className="mt-3 text-[12px] text-amber-200/90 bg-amber-400/[0.07] p-2.5 rounded-xl border border-amber-300/15 flex items-start gap-2 leading-snug">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-px text-amber-300" />
                 <span>The demos are ready to explore. Creating new scenes needs a Gemini key in .env.local.</span>
              </div>
@@ -378,11 +384,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className={panel} data-tour="demos">
         <div className="flex items-center justify-between mb-3">
             <span className={panelTitle}><Compass className="w-3.5 h-3.5 text-blue-300" /> Demos</span>
-            <span className="text-[11px] text-slate-500 truncate ml-2">
-                {demos.find(d => d.id === activeDemoId)?.title ?? `${demos.length} scenes`}
-            </span>
+            <span className="text-[12px] text-slate-500 ml-2">{demos.length} free scenes</span>
         </div>
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 gap-1.5">
             {demos.map(demo => {
                 const Icon = demo.icon;
                 const active = demo.id === activeDemoId;
@@ -391,13 +395,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         key={demo.id}
                         onClick={() => onLoadDemo(demo)}
                         disabled={loading}
-                        title={`${demo.title} — ${demo.tagline}`}
-                        aria-label={demo.title}
+                        title={demo.tagline}
                         aria-pressed={active}
-                        className={`h-10 rounded-xl border flex items-center justify-center transition-all duration-300 disabled:opacity-50 ${active ? '' : 'border-white/[0.06] bg-slate-950/30 text-slate-400 hover:text-slate-100 hover:border-white/15 hover:bg-slate-800/40'}`}
-                        style={active ? { backgroundColor: `${demo.accent}1f`, borderColor: `${demo.accent}80`, color: demo.accent, boxShadow: `0 0 18px -4px ${demo.accent}40` } : undefined}
+                        className={`min-w-0 min-h-10 px-2.5 py-1.5 rounded-xl border flex items-center gap-2 text-left transition-colors duration-300 disabled:opacity-50 ${active ? 'text-slate-50' : 'border-white/[0.06] bg-slate-950/30 text-slate-300 hover:text-white hover:border-white/15 hover:bg-slate-800/40'}`}
+                        style={active ? { backgroundColor: `${demo.accent}1f`, borderColor: `${demo.accent}80` } : undefined}
                     >
-                        <Icon className="w-4 h-4" />
+                        <Icon className="w-4 h-4 shrink-0" style={{ color: demo.accent }} />
+                        <span className="min-w-0 text-[12px] leading-tight font-medium">{demo.title}</span>
                     </button>
                 );
             })}
@@ -408,7 +412,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className={panel} data-tour="library">
         <div className="flex items-center justify-between mb-3">
             <span className={panelTitle}><BookMarked className="w-3.5 h-3.5 text-blue-300" /> My library</span>
-            <span className="text-[11px] text-slate-500">{library.length} saved</span>
+            <span className="text-[12px] text-slate-500">{library.length} saved</span>
         </div>
 
         {saving ? (
@@ -419,24 +423,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onChange={(e) => setSaveName(e.target.value.slice(0, 60))}
                     onKeyDown={(e) => { if (e.key === 'Enter') confirmSave(); if (e.key === 'Escape') setSaving(false); }}
                     aria-label="Name for the saved simulation"
-                    className="flex-1 min-w-0 rounded-lg bg-slate-950/60 border border-slate-700 focus:border-blue-500/60 focus:outline-hidden px-2 py-1.5 text-xs text-slate-200"
+                    className="flex-1 min-w-0 rounded-lg bg-slate-950/60 border border-slate-700 focus:border-blue-500/60 focus:outline-hidden px-2.5 py-2 text-[13px] text-slate-100"
                 />
-                <button onClick={confirmSave} className="px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium">Save</button>
-                <button onClick={() => setSaving(false)} className="px-1.5 rounded-lg text-slate-400 hover:bg-white/10" aria-label="Cancel"><X className="w-3.5 h-3.5" /></button>
+                <button onClick={confirmSave} className="px-3.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[12px] font-medium">Save</button>
+                <button onClick={() => setSaving(false)} className="px-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10" aria-label="Cancel saving" title="Cancel"><X className="w-4 h-4" /></button>
             </div>
         ) : (
             <div className="flex gap-1.5 mb-2">
                 <button onClick={startSaving} disabled={!simulationData || loading} className={smallButton} title="Save the current simulation in this browser">
-                    <Save className="w-3 h-3" /> Save
+                    <Save className="w-3.5 h-3.5" /> Save
                 </button>
                 <button onClick={onShare} disabled={!simulationData || loading} className={smallButton} title="Copy a link that reopens this exact simulation">
-                    <Link2 className="w-3 h-3" /> Share
+                    <Link2 className="w-3.5 h-3.5" /> Share
                 </button>
                 <button onClick={onExport} disabled={!simulationData || loading} className={smallButton} title="Download this simulation as a file">
-                    <Download className="w-3 h-3" /> Export
+                    <Download className="w-3.5 h-3.5" /> Export
                 </button>
                 <button onClick={() => importRef.current?.click()} disabled={loading} className={smallButton} title="Open a simulation file">
-                    <FolderOpen className="w-3 h-3" /> Open
+                    <FolderOpen className="w-3.5 h-3.5" /> Open
                 </button>
                 <input
                     ref={importRef}
@@ -453,7 +457,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {library.length === 0 ? (
-            <p className="text-[12px] leading-snug text-slate-500">Nothing saved yet. Scenes you save stay here, in this browser.</p>
+            <p className="text-[12px] leading-snug text-slate-500">{simulationData ? 'Press Save to keep this scene here, in this browser.' : 'Nothing saved yet. Scenes you save stay here, in this browser.'}</p>
         ) : (
             <ul className="space-y-1 max-h-36 overflow-y-auto custom-scrollbar pr-0.5">
                 {library.map(entry => (
@@ -461,22 +465,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <button
                             onClick={() => onOpenEntry(entry)}
                             disabled={loading}
-                            className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 text-left disabled:opacity-50"
+                            className="flex-1 min-w-0 flex items-center gap-2 px-2.5 py-2 text-left disabled:opacity-50"
                             title={`Open "${entry.name}"`}
                         >
-                            <Play className="w-3 h-3 shrink-0 text-slate-500 group-hover:text-blue-400 fill-current" />
+                            <Play className="w-3.5 h-3.5 shrink-0 text-slate-500 group-hover:text-blue-400 fill-current" />
                             <span className="min-w-0">
-                                <span className="block truncate text-xs text-slate-200">{entry.name}</span>
-                                <span className="block text-[10px] text-slate-600">{new Date(entry.savedAt).toLocaleDateString()}</span>
+                                <span className="block truncate text-[13px] text-slate-200">{entry.name}</span>
+                                <span className="block text-[11px] text-slate-500">{new Date(entry.savedAt).toLocaleDateString()}</span>
                             </span>
                         </button>
                         <button
                             onClick={() => { if (confirmDelete === entry.id) { onDeleteEntry(entry.id); setConfirmDelete(null); } else { setConfirmDelete(entry.id); } }}
                             onBlur={() => setConfirmDelete(null)}
-                            className={`shrink-0 mr-1 px-1.5 py-1 rounded-md text-[10px] font-semibold ${confirmDelete === entry.id ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-red-300 hover:bg-red-950/50'}`}
+                            className={`shrink-0 mr-1 px-2 py-1.5 rounded-md text-[11px] font-semibold ${confirmDelete === entry.id ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-red-300 hover:bg-red-950/50'}`}
                             aria-label={confirmDelete === entry.id ? `Confirm deleting ${entry.name}` : `Delete ${entry.name}`}
+                            title={confirmDelete === entry.id ? 'Click again to delete it' : 'Delete'}
                         >
-                            {confirmDelete === entry.id ? 'Delete?' : <Trash2 className="w-3 h-3" />}
+                            {confirmDelete === entry.id ? 'Delete?' : <Trash2 className="w-3.5 h-3.5" />}
                         </button>
                     </li>
                 ))}
@@ -488,16 +493,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {simulationData && !simulationData.demoMode && !loading && (
          <div className="shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl px-4 py-2.5 shadow-calm">
              <div className="flex items-center justify-between gap-2">
-                 <span className="text-[12px] text-slate-400">{rating === 'up' ? 'Glad you liked it' : rating === 'down' ? 'Thanks, noted for next time' : 'How did this scene turn out?'}</span>
+                 <span className="text-[13px] text-slate-300">{rating === 'up' ? 'Glad you liked it' : rating === 'down' ? 'Thanks, noted for next time' : 'How did this scene turn out?'}</span>
                  <div className="flex gap-1">
                      <button
                          onClick={rateUp}
                          aria-pressed={rating === 'up'}
                          title={rating === 'up' ? 'Remove your like' : 'Good: use it as an example for similar requests'}
                          aria-label="Good scene"
-                         className={`p-1.5 rounded-md transition-colors ${rating === 'up' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-500 hover:text-emerald-300 hover:bg-white/5'}`}
+                         className={`p-2 rounded-md transition-colors ${rating === 'up' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-emerald-300 hover:bg-white/5'}`}
                      >
-                         <ThumbsUp className="w-3.5 h-3.5" />
+                         <ThumbsUp className="w-4 h-4" />
                      </button>
                      <button
                          onClick={rateDown}
@@ -505,30 +510,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                          aria-expanded={complaining}
                          title={rating === 'down' ? 'Remove your rating' : 'Not good: say what was wrong'}
                          aria-label="Poor scene"
-                         className={`p-1.5 rounded-md transition-colors ${rating === 'down' || complaining ? 'bg-red-500/20 text-red-300' : 'text-slate-500 hover:text-red-300 hover:bg-white/5'}`}
+                         className={`p-2 rounded-md transition-colors ${rating === 'down' || complaining ? 'bg-red-500/20 text-red-300' : 'text-slate-400 hover:text-red-300 hover:bg-white/5'}`}
                      >
-                         <ThumbsDown className="w-3.5 h-3.5" />
+                         <ThumbsDown className="w-4 h-4" />
                      </button>
                  </div>
              </div>
              {complaining && (
                  <div className="mt-2 space-y-2">
-                     <span className="block text-[10px] text-slate-400">What was wrong? Pick any that apply.</span>
+                     <span className="block text-[12px] text-slate-400">What was wrong? Pick any that apply.</span>
                      <div className="flex flex-wrap gap-1">
                          {(Object.keys(COMPLAINTS) as Complaint[]).map(c => (
                              <button
                                  key={c}
                                  onClick={() => toggleComplaint(c)}
                                  aria-pressed={complaints.includes(c)}
-                                 className={`px-2 py-0.5 rounded-full text-[10px] border transition-colors ${complaints.includes(c) ? 'bg-red-500/20 border-red-400/40 text-red-200' : 'bg-slate-800/70 border-white/5 text-slate-400 hover:text-white'}`}
+                                 className={`px-2.5 py-1 rounded-full text-[12px] border transition-colors ${complaints.includes(c) ? 'bg-red-500/20 border-red-400/40 text-red-200' : 'bg-slate-800/70 border-white/5 text-slate-400 hover:text-white'}`}
                              >
                                  {COMPLAINTS[c]}
                              </button>
                          ))}
                      </div>
                      <div className="flex justify-end gap-1.5">
-                         <button onClick={() => setComplaining(false)} className="px-2 py-1 rounded-md text-[10px] text-slate-400 hover:bg-white/10">Cancel</button>
-                         <button onClick={sendComplaints} className="px-2.5 py-1 rounded-md bg-red-600/80 hover:bg-red-500 text-white text-[10px] font-semibold">Send</button>
+                         <button onClick={() => setComplaining(false)} className="px-3 py-1.5 rounded-md text-[12px] text-slate-300 hover:bg-white/10">Cancel</button>
+                         <button onClick={sendComplaints} className="px-3 py-1.5 rounded-md bg-red-600/80 hover:bg-red-500 text-white text-[12px] font-semibold">Send</button>
                      </div>
                  </div>
              )}

@@ -98,6 +98,8 @@
       radial-gradient(1100px 700px at 55% 125%, rgba(220, 182, 118, 0.06), transparent 62%);
     animation: breathe 16s ease-in-out infinite;
   }
+  /* While a simulation runs, the backdrop holds still: no work for the page beyond the scene itself */
+  .bg-grid-pattern.bg-still { animation: none; opacity: 0.85; }
 
   /* Frosted surfaces */
   .glass {
