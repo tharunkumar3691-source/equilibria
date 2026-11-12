@@ -113,6 +113,24 @@
   .font-display { font-optical-sizing: auto; letter-spacing: -0.01em; }
 }
 
+/* Credits window: it rises in, its balance ring turns once, and a purchase ends in a short burst of
+   confetti. Each plays once; none loops, so an open window costs nothing to keep on screen. */
+.credits-rise { animation: credits-rise 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.credits-orb { animation: credits-orb 1400ms cubic-bezier(0.3, 0.7, 0.2, 1) both; }
+.credits-pop { animation: credits-pop 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.confetti-piece {
+  position: absolute; top: -12px; opacity: 0;
+  animation-name: confetti-fall; animation-timing-function: cubic-bezier(0.25, 0.6, 0.5, 1); animation-fill-mode: forwards;
+}
+@keyframes credits-rise { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes credits-orb { from { transform: rotate(-200deg); opacity: 0.4; } to { transform: rotate(0deg); opacity: 1; } }
+@keyframes credits-pop { 0% { transform: scale(0.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes confetti-fall {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--drift), 340px) rotate(var(--spin)); }
+}
+
 @keyframes breathe {
   0%, 100% { opacity: 0.75; }
   50% { opacity: 1; }
