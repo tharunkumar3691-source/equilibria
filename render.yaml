@@ -5,22 +5,16 @@ services:
   - type: web
     name: equilibria
     runtime: node
-    # A paid instance keeps the app awake for judges (no cold start) and allows the disk below, so credit
-    # balances and PayPal orders survive restarts. On the free plan, delete the disk block and DATA_DIR:
-    # it still works, but balances reset whenever the instance restarts.
-    plan: starter
+    # Free plan: sleeps after 15 minutes idle (the first visit then takes about a minute), and credit balances
+    # and PayPal orders reset whenever the instance restarts. For a paid instance (plan: starter), add a disk
+    # (name, mountPath: /var/data, sizeGB: 1) and DATA_DIR=/var/data so they survive restarts.
+    plan: free
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: equilibria-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: "24"
-      - key: DATA_DIR
-        value: /var/data
       - key: GEMINI_API_KEY
         sync: false
       # Backup key, used when the first runs out of quota (best from a second Google Cloud project)
