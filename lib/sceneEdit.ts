@@ -196,7 +196,7 @@ export async function chatTurn(scene: SimulationData | null, history: ChatTurn[]
       const paymentCalls = (response.functionCalls || []).filter(c => c.name && PAYMENT_TOOL_NAMES.includes(c.name));
       if (paymentCalls.length && paymentRounds < MAX_PAYMENT_ROUNDS) {
         paymentRounds++;
-        const parts = [];
+        const parts: { functionResponse: { name: string; response: Record<string, unknown> } }[] = [];
         for (const c of paymentCalls) parts.push({ functionResponse: { name: c.name, response: await runPaymentTool(c.name!, c.args || {}) } });
         response = await chat.sendMessage({ message: parts });
         continue;

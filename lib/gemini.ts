@@ -71,6 +71,29 @@ const isKeyError = (error: any) => {
   return status === 401 || status === 403 || /API[_ ]?key|PERMISSION_DENIED|UNAUTHENTICATED/i.test(messageOf(error));
 };
 
+// The Equilibria server's own refusals (server/credits.ts), carried inside the SDK's error text as
+// {"error":{"status":"ASSISTANT_LIMIT","message":"..."}}. Returns the server's sentence for people, or null.
+const SERVER_REASONS = /SERVER_DAILY_LIMIT|ASSISTANT_LIMIT|NO_DEVICE/;
+export function serverLimitMessage(error: any): string | null {
+  const text = messageOf(error);
+  if (!SERVER_REASONS.test(text)) return null;
+  const start = text.indexOf('{');
+  if (start >= 0) {
+    try {
+      const message = JSON.parse(text.slice(start))?.error?.message;
+      if (typeof message === 'string' && message) return message;
+    } catch {}
+  }
+  return /ASSISTANT_LIMIT/.test(text)
+    ? "You have used today's free assistant requests. Creating a new scene uses a credit instead."
+    : /NO_DEVICE/.test(text)
+    ? 'Reload the page to start a session, then try again.'
+    : 'Equilibria has reached its AI limit for today. The demos still work; please try again tomorrow.';
+}
+
+// A request the Equilibria server refused (out of credits or a daily limit); its message is ready to show
+export class ServerLimitError extends Error {}
+
 class KeyUnusable extends Error {
   constructor(public cause: any) { super(messageOf(cause)); }
 }
@@ -98,7 +121,7 @@ async function withModels<T>(ai: GoogleGenAI, run: (model: string, ai: GoogleGen
         console.warn(`Gemini model ${model} failed:`, error);
         lastError = error;
         // Out of credits, or the server's daily AI limit: the same on every model and every key
-        if (statusOf(error) === 402 || /SERVER_DAILY_LIMIT|ASSISTANT_LIMIT|NO_DEVICE/.test(messageOf(error))) throw error;
+        if (statusOf(error) === 402 || SERVER_REASONS.test(messageOf(error))) throw new ServerLimitError(serverLimitMessage(error) || messageOf(error));
         if (isKeyError(error)) throw new KeyUnusable(error);   // Same on every model: try the next key
         if (isQuotaError(error)) { quotaFailures++; continue; } // Quotas are per model: try the next one
         // A malformed request fails the same way on every model and every key

@@ -141,8 +141,8 @@ export async function checkSimulation(data: SimulationData): Promise<SceneCheck>
 
     if (h.bounds) {
       // (Bodies parked below the ground on purpose, waiting to be used, are not counted)
-      const below = (b: CANNON.Body, p: { y: number }) => p.y < h.bounds!.top - 1;
-      const fell = objects.filter(o => o.body.type === CANNON.Body.DYNAMIC && below(o.body, o.body.position) && !below(o.body, start.get(o.body)!));
+      const below = (p: { y: number }) => p.y < h.bounds!.top - 1;
+      const fell = objects.filter(o => o.body.type === CANNON.Body.DYNAMIC && below(o.body.position) && !below(start.get(o.body)!));
       if (fell.length) {
         issues.push(`${fell.slice(0, MAX_LISTED).map(o => `'${o.label}'`).join(', ')} fell through or off the ground within ${CHECK_SECONDS} s (now at y = ${fmt(fell[0].body.position.y)}). Keep objects on the ground and check their collision shapes match their meshes.`);
       }

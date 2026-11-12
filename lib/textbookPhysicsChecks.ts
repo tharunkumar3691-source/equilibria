@@ -68,11 +68,11 @@ const CHECKS: Check[] = [
   { name: 'slope 30°, mu 0.2: time to slide 5 m', code: slope(30, 0.2), measure: slideTo(5), expected: Math.sqrt(10 / aRough), tolerance: 0.005 },
   { name: 'slope 30°, frictionless: time to slide 5 m', code: slope(30, 0), measure: slideTo(5), expected: Math.sqrt(10 / (g * 0.5)), tolerance: 0.005 },
   { name: 'slope 30°, mu 0.7 holds: distance moved in 3 s (m)', code: slope(30, 0.7),
-    measure: (get, until, run) => { const b = get('Block'), s0 = b.position.clone(); run(3); return b.position.distanceTo(s0); }, expected: 0, tolerance: 0.005 },
+    measure: (get, _until, run) => { const b = get('Block'), s0 = b.position.clone(); run(3); return b.position.distanceTo(s0); }, expected: 0, tolerance: 0.005 },
   { name: 'diagonal slide, mu 0.25 from 6 m/s: stopping distance', code: floor(0.25, 0, `${box(3, 0.1)} b.velocity.set(6 / Math.SQRT2, 0, 6 / Math.SQRT2); addSimulationObject('Block', new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2)), b, { main: true });`),
     measure: (get, until) => { const b = get('Block'), p0 = b.position.clone(); until(() => b.velocity.length() < 1e-3, 20); return b.position.distanceTo(p0); }, expected: 36 / (2 * 0.25 * g), tolerance: 0.01 },
   { name: 'pull 30 N at 37° on 5 kg, mu 0.3: speed after 2 s', code: floor(0.3, 0, `${box(5, 0.1)} world.addEventListener('preStep', () => b.applyForce(new CANNON.Vec3(30 * Math.cos(${rad(37)}), 30 * Math.sin(${rad(37)}), 0))); addSimulationObject('Block', new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2)), b, { main: true });`),
-    measure: (get, until, run) => { run(2); return get('Block').velocity.x; }, expected: 2 * pullA(37), tolerance: 0.005 },
+    measure: (get, _until, run) => { run(2); return get('Block').velocity.x; }, expected: 2 * pullA(37), tolerance: 0.005 },
   { name: 'spring k 200, 0.5 kg: period', code: floor(0, 0, `${box(0.5, 0.1)} const wall = new CANNON.Body({ mass: 0, position: new CANNON.Vec3(-1, 0.1, 0) }); world.addBody(wall); b.position.x = 0.3;
 const sp = new CANNON.Spring(wall, b, { restLength: 1.0, stiffness: 200, damping: 0 }); world.addEventListener('preStep', () => sp.applyForce());
 addSimulationObject('Block', new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2)), b, { main: true });`),
@@ -85,8 +85,8 @@ b.velocity.set(15 * Math.cos(${rad(30)}), 15 * Math.sin(${rad(30)}), 0);
 addSimulationObject('Stone', new THREE.Mesh(new THREE.SphereGeometry(0.05)), b, { main: true });`,
     measure: (get, until) => { const b = get('Stone'); until(() => b.position.y <= 0, 20); return b.position.x; }, expected: 15 * Math.cos(rad(30)) * flight, tolerance: 0.005 },
   ...[1, 0.5, 0].flatMap(e => [
-    { name: `collision e = ${e}: velocity of the 0.5 kg ball`, code: collision(e), measure: (get: any, until: any, run: any) => { run(0.6); return get('A').velocity.x; }, expected: vA(e), tolerance: e === 0 ? 0.01 : 0.01 },
-    { name: `collision e = ${e}: velocity of the 1.5 kg ball`, code: collision(e), measure: (get: any, until: any, run: any) => { run(0.6); return get('B').velocity.x; }, expected: vB(e), tolerance: 0.01 }
+    { name: `collision e = ${e}: velocity of the 0.5 kg ball`, code: collision(e), measure: (get: any, _until: any, run: any) => { run(0.6); return get('A').velocity.x; }, expected: vA(e), tolerance: e === 0 ? 0.01 : 0.01 },
+    { name: `collision e = ${e}: velocity of the 1.5 kg ball`, code: collision(e), measure: (get: any, _until: any, run: any) => { run(0.6); return get('B').velocity.x; }, expected: vB(e), tolerance: 0.01 }
   ]),
   { name: 'ball dropped 2 m, e 0.8: rebound height', code: floor(0.3, 0.8, `const b = new CANNON.Body({ mass: 0.5, material: bm, shape: new CANNON.Sphere(0.1), position: new CANNON.Vec3(0, 2.1, 0), linearDamping: 0, angularDamping: 0 });
 addSimulationObject('Ball', new THREE.Mesh(new THREE.SphereGeometry(0.1)), b, { main: true });`),
@@ -97,7 +97,7 @@ addSimulationObject('Ball', new THREE.Mesh(new THREE.SphereGeometry(0.1)), b, { 
   { name: 'three stacked boxes: drift of the top one in 5 s (m)', code: floor(0.5, 0, `
 [0.1, 0.3, 0.5].forEach((y, i) => { const b = new CANNON.Body({ mass: 3, material: bm, shape: new CANNON.Box(new CANNON.Vec3(0.1, 0.1, 0.1)), position: new CANNON.Vec3(0, y, 0) });
   addSimulationObject('Box' + i, new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2)), b); });`),
-    measure: (get, until, run) => { const b = get('Box2'), p0 = b.position.clone(); run(5); return b.position.distanceTo(p0); }, expected: 0, tolerance: 0.002 }
+    measure: (get, _until, run) => { const b = get('Box2'), p0 = b.position.clone(); run(5); return b.position.distanceTo(p0); }, expected: 0, tolerance: 0.002 }
 ];
 
 // The spring's period is read from the turning points, so it gets its own measure with the clock

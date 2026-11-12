@@ -20,10 +20,10 @@ export interface Device {
   credits: number;
   createdAt: number;
   assistant: { day: string; calls: number };   // Free assistant requests (chat edits) used today
-  refunds: { day: string; count: number };      // Credits given back today for failed generations
+  refunds: DayCount;                            // Credits given back today for failed generations
   purchased: number;                            // Credits bought for this device, all time
   sponsored?: number;                           // Credits this device bought for the student pool, all time
-  claims?: { day: string; count: number };      // Pool credits taken today
+  claims?: DayCount;                            // Pool credits taken today
 }
 // Who an order's credits go to: the buyer, or the pay-it-forward pool for students who cannot pay
 export type Purpose = 'self' | 'pool';
@@ -59,9 +59,12 @@ export interface CreditOptions {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const newId = (bytes = 18) => randomBytes(bytes).toString('base64url');
-// One generation makes several Gemini requests (design, test repairs, review, improvement, model fallbacks)
-const PASS_CALLS = 40;
-const PASS_MS = 15 * 60 * 1000;
+// One generation makes several Gemini requests (design, test repairs, review, improvement), and each can
+// fall back across models when one is overloaded. Best-quality mode allows up to 4 minutes per request.
+const PASS_CALLS = 100;
+const PASS_MS = 30 * 60 * 1000;
+
+type DayCount = { day: string; count: number };
 
 export function createCreditStore(options: CreditOptions = {}) {
   const dir = resolve(options.dataDir || 'data');
@@ -80,21 +83,28 @@ export function createCreditStore(options: CreditOptions = {}) {
   try { store = { ...store, ...JSON.parse(readFileSync(file, 'utf8')) }; } catch {}
   const passes = new Map<string, Pass>();
 
-  // Writes are batched: at most one file write per half second, written whole and then swapped in
+  // The whole store is written to a temporary file and then swapped in, so a crash never leaves half a file
+  const write = () => {
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(file + '.tmp', JSON.stringify(store));
+      renameSync(file + '.tmp', file);
+    } catch (error) { console.error('[credits] Could not save', error); }
+  };
+  // Everyday changes are batched (at most one write per half second); money changes are written at once
   let timer: NodeJS.Timeout | null = null;
   const save = () => {
     if (timer) return;
-    timer = setTimeout(() => {
-      timer = null;
-      try {
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(file + '.tmp', JSON.stringify(store));
-        renameSync(file + '.tmp', file);
-      } catch (error) { console.error('[credits] Could not save', error); }
-    }, 500);
+    timer = setTimeout(() => { timer = null; write(); }, 500);
   };
+  const saveNow = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    write();
+  };
+  // A pending batch is written before the process stops (a host restarting or redeploying the service)
+  const flush = () => { if (timer) saveNow(); };
 
-  const fresh = <T extends { day: string }>(entry: T, reset: T): T => (entry && entry.day === today() ? entry : reset);
+  const fresh = <T extends { day: string }>(entry: T | undefined, reset: T): T => (entry && entry.day === today() ? entry : reset);
 
   // The device behind a cookie, or a new one (with free credits while this address has starts left today)
   function device(id: string | undefined, ip: string): { id: string; device: Device; created: boolean } {
@@ -124,7 +134,7 @@ export function createCreditStore(options: CreditOptions = {}) {
     d.credits -= 1;
     const pass: Pass = { id: newId(), device: deviceId, callsLeft: PASS_CALLS, expires: Date.now() + PASS_MS, kind, closed: false };
     passes.set(pass.id, pass);
-    save();
+    saveNow();
     return pass;
   }
 
@@ -140,7 +150,7 @@ export function createCreditStore(options: CreditOptions = {}) {
     if (d.refunds.count >= refundLimit) return { refunded: false };
     d.refunds.count += 1;
     d.credits += 1;
-    save();
+    saveNow();
     return { refunded: true };
   }
 
@@ -173,7 +183,7 @@ export function createCreditStore(options: CreditOptions = {}) {
   }
 
   // --- PayPal orders ---
-  function recordOrder(orderId: string, record: OrderRecord) { store.orders[orderId] = record; save(); }
+  function recordOrder(orderId: string, record: OrderRecord) { store.orders[orderId] = record; saveNow(); }
   const order = (orderId: string): OrderRecord | undefined => store.orders[orderId];
 
   // Adds a paid order's credits exactly once, however many times the capture is reported (the page and the
@@ -196,7 +206,7 @@ export function createCreditStore(options: CreditOptions = {}) {
       d.credits += record.credits;
       d.purchased += record.credits;
     }
-    save();
+    saveNow();
     return { added: record.credits, purpose };
   }
 
@@ -205,15 +215,15 @@ export function createCreditStore(options: CreditOptions = {}) {
     const d = store.devices[deviceId];
     if (!d) return { claimed: 0, reason: 'NO_DEVICE' };
     if (d.credits > 0) return { claimed: 0, reason: 'HAS_CREDITS' };
-    d.claims = fresh(d.claims, { day: today(), count: 0 });
-    if (d.claims.count >= poolClaim) return { claimed: 0, reason: 'CLAIMED_TODAY' };
-    const amount = Math.min(poolClaim - d.claims.count, store.pool.credits);
+    const claims = d.claims = fresh(d.claims, { day: today(), count: 0 });
+    if (claims.count >= poolClaim) return { claimed: 0, reason: 'CLAIMED_TODAY' };
+    const amount = Math.min(poolClaim - claims.count, store.pool.credits);
     if (amount < 1) return { claimed: 0, reason: 'POOL_EMPTY' };
     store.pool.credits -= amount;
     store.pool.claimed += amount;
-    d.claims.count += amount;
+    claims.count += amount;
     d.credits += amount;
-    save();
+    saveNow();
     return { claimed: amount };
   }
   const pool = () => ({ ...store.pool });
@@ -227,7 +237,7 @@ export function createCreditStore(options: CreditOptions = {}) {
 
   return {
     device, spend, finish, authorizeCall, recordOrder, order, creditOrder, claimFromPool, pool, poolClaimLeft,
-    assistantUsed, assistantLimit, freeCredits,
+    assistantUsed, assistantLimit, freeCredits, flush,
   };
 }
 export type CreditStore = ReturnType<typeof createCreditStore>;

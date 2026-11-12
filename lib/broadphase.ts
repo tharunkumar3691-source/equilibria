@@ -8,7 +8,7 @@
 import * as CANNON from 'cannon-es';
 
 export class SweepBroadphase extends CANNON.SAPBroadphase {
-  collisionPairs(world: CANNON.World, p1: CANNON.Body[], p2: CANNON.Body[]) {
+  collisionPairs(_world: CANNON.World, p1: CANNON.Body[], p2: CANNON.Body[]) {
     const bodies = this.axisList;
     const N = bodies.length;
     const axis = this.axisIndex === 0 ? 'x' : this.axisIndex === 1 ? 'y' : 'z';

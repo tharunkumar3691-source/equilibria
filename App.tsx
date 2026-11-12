@@ -150,6 +150,8 @@ export default function App() {
   const videoUrlRef = useRef<string | null>(null);
   // Only the newest request may show its result (an older one finishing late is ignored)
   const requestRef = useRef(0);
+  // True while a generation is taking its credit, before it shows as loading
+  const startingRef = useRef(false);
   // Read once, before the share-link effect below clears the address bar
   const [arrivedByLink] = useState(() => !!readSharePayload());
 
@@ -237,15 +239,22 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Runs one generation and reports its real progress
-  // Each generation first takes a credit (none left: the credits dialog opens instead), and gives it back if it fails
+  // Runs one generation and reports its real progress.
+  // Each generation first takes a credit (none left: the credits dialog opens instead), and gives it back if it fails.
   const runGeneration = async (kind: 'video' | 'text' | 'problem', video: string | null, generate: (onStage: (stage: GenerationStage, detail?: string) => void) => Promise<SimulationData>) => {
+    // A second click while the credit is being taken (before the buttons are disabled) starts nothing
+    if (startingRef.current || loading) {
+      if (video) URL.revokeObjectURL(video);
+      return;
+    }
+    startingRef.current = true;
     let pass: string;
     try {
       const spent = await spendCredit(kind);
       pass = spent.pass;
       applyBalance(spent);
     } catch (err) {
+      startingRef.current = false;
       if (err instanceof CreditError && err.code === 'NO_CREDITS') {
         applyBalance(err.balance);
         setMenuOpen(false);
@@ -267,6 +276,7 @@ export default function App() {
       }
     };
 
+    startingRef.current = false;
     const request = ++requestRef.current;
     setLoading(true);
     setError(null);

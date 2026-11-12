@@ -11,7 +11,7 @@ services:
     plan: starter
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
-    healthCheckPath: /api/credits
+    healthCheckPath: /api/health
     disk:
       name: equilibria-data
       mountPath: /var/data

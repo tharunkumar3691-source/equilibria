@@ -232,8 +232,15 @@ await step('unknown pack and non-JSON bodies are refused', async () => {
   assert.equal(r.status, 400);
 });
 
-await step('balances survive a restart (saved to DATA_DIR)', async () => {
-  await new Promise(r => setTimeout(r, 800));
+await step('the health check answers without creating a visitor', async () => {
+  const r = await realFetch(base + '/api/health');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.getSetCookie().length, 0);
+  assert.deepEqual(await r.json(), { ok: true, ai: true, paypal: true });
+});
+
+await step('payments are saved at once: a restart straight after keeps them', async () => {
+  // No waiting for the batched write: money changes are written immediately
   const again = createApi({ DATA_DIR: dataDir, PAYPAL_CLIENT_ID: 'cid', PAYPAL_CLIENT_SECRET: 'secret', GEMINI_API_KEY: 'gkey' });
   const s2 = createServer((req, res) => again.middleware(req, res));
   await new Promise<void>(r => s2.listen(0, r));

@@ -60,7 +60,7 @@ reaches the browser. **Sandbox only**: no real money moves.
 ## How PayPal and AI work together
 
 ```
- Student ──► Create a scene ──► server takes 1 credit, opens a 15-minute "generation pass"
+ Student ──► Create a scene ──► server takes 1 credit, opens a 30-minute "generation pass"
                                       │
                                       ▼
                     Gemini designs ─► physics test ─► repair (×2) ─► visual review
@@ -124,9 +124,10 @@ free up to a daily number per visitor, and the whole server has a daily cap on G
 The demos work without any keys. Without the PayPal keys the app runs, and the credits window says PayPal is
 not set up.
 
-**Tests:** `npm test` runs 18 end-to-end checks of the credits, PayPal and webhook endpoints against fake
+**Tests:** `npm test` runs 19 end-to-end checks of the credits, PayPal and webhook endpoints against fake
 PayPal and Gemini servers (no keys or network needed): idempotent captures, wrong amounts, orders from another
-browser, the student pool, refunds, Gemini metering, forged webhooks and balances surviving a restart.
+browser, the student pool, refunds, Gemini metering, forged webhooks, the health check, and payments surviving
+an immediate restart.
 
 ### Deploy on Render
 

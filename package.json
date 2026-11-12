@@ -12,12 +12,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server/index.ts",
-    "test": "node server/api.test.ts"
+    "test": "node server/api.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "^1.33.0",
     "cannon-es": "0.20.0",
-    "katex": "^0.16.47",
+    "katex": "^0.19.1",
     "lucide-react": "^0.560.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

@@ -42,7 +42,11 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
 
   // PayPal's buttons for the chosen pack and purpose (rebuilt when either changes)
   useEffect(() => {
-    if (!status?.paypal) { setPhase('unavailable'); return; }
+    if (!status?.paypal) {
+      if (!status) setMessage('Could not reach the Equilibria server. Check your connection and reload the page.');
+      setPhase('unavailable');
+      return;
+    }
     if (phase === 'done') return;
     let buttons: any = null;
     let gone = false;
@@ -82,9 +86,19 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
           setPhase('ready');
         },
       });
-      if (!buttons.isEligible || buttons.isEligible()) {
-        buttons.render(holder.current).then(() => !gone && setPhase('ready')).catch(() => {});
+      if (buttons.isEligible && !buttons.isEligible()) {
+        setMessage('PayPal checkout is not available in this browser. Try another browser, or turn off content blockers for this page.');
+        setPhase('unavailable');
+        return;
       }
+      buttons.render(holder.current)
+        .then(() => { if (!gone) setPhase('ready'); })
+        .catch((error: any) => {
+          if (gone) return;
+          console.error('[PayPal] Could not show the buttons', error);
+          setMessage('PayPal could not be shown. Reload the page and try again.');
+          setPhase('unavailable');
+        });
     }).catch((error: Error) => { if (!gone) { setMessage(error.message); setPhase('unavailable'); } });
     return () => { gone = true; try { buttons?.close?.(); } catch {} };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,7 +232,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
 
               {phase === 'unavailable' ? (
                 <p className="text-[12px] text-amber-200/90 bg-amber-400/[0.07] p-3 rounded-xl border border-amber-300/15">
-                  {status?.paypal ? 'PayPal could not be loaded. Check your connection and reopen this window.' : 'PayPal is not set up on this server yet. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET (sandbox) and restart it.'}
+                  {status?.paypal || !status ? 'PayPal checkout is not available right now.' : 'PayPal is not set up on this server yet. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET (sandbox) and restart it.'}
                 </p>
               ) : (
                 <div>

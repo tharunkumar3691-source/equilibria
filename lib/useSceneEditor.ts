@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SimulationData } from '../types';
 import { chatTurn, ChatTurn, EditStage } from './sceneEdit';
+import { ServerLimitError } from './gemini';
 
 // A line in the conversation. 'note' lines are for the user only (scene switched, undone...) and are never sent.
 export interface ChatMessage {
@@ -142,7 +143,9 @@ export function useSceneEditor(apiKeyAvailable: boolean, simulationData: Simulat
     } catch (error: any) {
       console.error('[Edit] Request failed:', error);
       const detail = String(error && error.message || error);
-      const reply = /quota|exhausted|429/i.test(detail)
+      const reply = error instanceof ServerLimitError
+        ? `${detail} Your scene is unchanged.`
+        : /quota|exhausted|429/i.test(detail)
         ? 'Your Gemini key is out of quota for now, so I could not make that change. Your scene is unchanged; try again a little later.'
         : /key|refused|401|403/i.test(detail)
         ? 'Gemini refused the API key, so I could not make that change. Please check GEMINI_API_KEY in .env.local. Your scene is unchanged.'

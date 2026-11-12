@@ -6,6 +6,7 @@
 //   POST /api/paypal/orders    {pack, purpose}  creates a sandbox PayPal order (for yourself, or for the pool)
 //   POST /api/paypal/orders/:id/capture    captures the approved order and adds its credits
 //   POST /api/paypal/webhook               PayPal's own report of approved and completed payments (signature checked)
+//   GET  /api/health                       for the host's health checks
 //   /api/gemini/...                        the Gemini proxy, allowed only within a pass or the free assistant allowance
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCreditStore, packById, PACKS, type CreditStore, type Purpose } from './credits.ts';
@@ -144,6 +145,9 @@ export function createApi(env: Record<string, string | undefined>) {
 
     if (path === '/api/paypal/webhook' && method === 'POST') { await handleWebhook(req, res); return; }
 
+    // For the host's health checks: answers without creating a visitor
+    if (path === '/api/health') { json(res, 200, { ok: true, ai: keys.length > 0, paypal: !!paypal }); return; }
+
     if (path === '/api/credits' && method === 'GET') {
       const { id } = deviceOf(req, res);
       json(res, 200, {
@@ -240,7 +244,7 @@ export function createApi(env: Record<string, string | undefined>) {
   // Connect-style middleware: the API, then the Gemini proxy, then whatever comes next (the page)
   const middleware = (req: IncomingMessage, res: ServerResponse, next?: () => void) => {
     const path = new URL(req.url || '/', 'http://localhost').pathname;
-    if (path === '/api/credits' || /^\/api\/(credits|paypal|pool)\//.test(path)) {
+    if (path === '/api/credits' || path === '/api/health' || /^\/api\/(credits|paypal|pool)\//.test(path)) {
       handle(req, res, path).catch(error => {
         console.error('[api]', error);
         if (!res.headersSent) json(res, 500, { error: 'SERVER_ERROR' });
@@ -249,5 +253,5 @@ export function createApi(env: Record<string, string | undefined>) {
     }
     gemini(req, res, next);
   };
-  return { middleware, keys, paypalReady: !!paypal, webhookReady: !!paypal?.webhookId };
+  return { middleware, keys, paypalReady: !!paypal, webhookReady: !!paypal?.webhookId, flush: store.flush };
 }
