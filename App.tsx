@@ -515,7 +515,7 @@ export default function App() {
 
         {/* Left: Sidebar / Control Center. A slide-over drawer on small screens, a fixed column on large ones. */}
         {menuOpen && <div className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs lg:hidden" onClick={() => setMenuOpen(false)}></div>}
-        <div className={`fixed inset-y-0 left-0 z-40 w-[min(88vw,340px)] p-3 bg-slate-950/95 border-r border-white/[0.06] transition-transform duration-500 ease-out lg:static lg:z-auto lg:w-[320px] xl:w-[344px] lg:shrink-0 lg:p-0 lg:bg-transparent lg:border-0 lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`fixed inset-y-0 left-0 z-40 w-[min(94vw,400px)] p-3 bg-slate-950/95 border-r border-white/[0.06] transition-transform duration-500 ease-out lg:static lg:z-auto lg:w-[380px] xl:w-[412px] lg:shrink-0 lg:p-0 lg:bg-transparent lg:border-0 lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <Sidebar
             loading={loading}
             loadingLabel={loadingLabel}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Video, Info, Sparkles, HelpCircle, X, PenLine, Wand2, BookMarked, Save, Link2, Download, FolderOpen, Trash2, Play, ThumbsUp, ThumbsDown, Gem, BookOpen, Compass, NotebookPen, ImagePlus, Sigma, Coins } from 'lucide-react';
-import { Wordmark } from './Logo';
+import { LogoMark } from './Logo';
 import { LibraryEntry, SimulationData } from '../types';
 import { DemoScenario } from '../lib/demos';
 import { MAX_PROMPT_LENGTH } from '../lib/gemini';
@@ -59,6 +59,68 @@ const chip = "px-2.5 py-1 rounded-full text-[12px] text-slate-300 bg-slate-800/4
 const panel = "shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl p-4 shadow-calm";
 const panelTitle = "text-[14px] font-medium text-slate-200 flex items-center gap-2";
 
+// The menu bar's sections; one is shown beside the bar at a time
+type Section = 'create' | 'demos' | 'library' | 'about';
+const SECTION_KEY = 'equilibria.sidebar.section';
+const savedSection = (): Section => {
+  try {
+    const s = localStorage.getItem(SECTION_KEY);
+    if (s === 'create' || s === 'demos' || s === 'library' || s === 'about') return s;
+  } catch { /* Storage blocked: start at Create */ }
+  return 'create';
+};
+
+// One entry of the menu bar: a section to show, or an action (credits, help)
+interface MenuItem {
+  id: string;
+  label: string;
+  hint: string;                 // Tooltip, and the line under the section's title
+  icon: React.ElementType;
+  accent: string;               // The item's colour when chosen
+  badge?: number | string;      // A count shown on the icon
+  dot?: 'busy' | 'new' | 'alert';
+  tour?: string;                // Target of the guided tour
+  onSelect: () => void;
+  active?: boolean;
+  onPointerEnter?: () => void;
+}
+
+const DOT_STYLE: Record<NonNullable<MenuItem['dot']>, string> = {
+  busy: 'bg-amber-300 animate-pulse',
+  new: 'bg-emerald-300',
+  alert: 'bg-red-300',
+};
+
+const MenuButton: React.FC<{ item: MenuItem }> = ({ item }) => {
+  const Icon = item.icon;
+  return (
+    <button
+      onClick={item.onSelect}
+      onPointerEnter={item.onPointerEnter}
+      onFocus={item.onPointerEnter}
+      aria-current={item.active ? 'page' : undefined}
+      title={item.hint}
+      data-tour={item.tour}
+      className={`group relative w-full flex flex-col items-center gap-1 px-1 py-2 rounded-xl text-[11px] font-medium leading-none transition-colors ${item.active ? 'text-white' : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]'}`}
+    >
+      {item.active && <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-[3px] rounded-r-full" style={{ background: item.accent }} aria-hidden="true"></span>}
+      <span
+        className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 ${item.active ? 'shadow-calm' : 'group-hover:scale-105'}`}
+        style={item.active ? { background: `linear-gradient(140deg, ${item.accent}55, ${item.accent}22)`, color: '#f4f7f6', boxShadow: `0 6px 18px -8px ${item.accent}` } : { color: item.accent }}
+      >
+        <Icon className="w-[19px] h-[19px]" />
+        {item.badge !== undefined && (
+          <span className="absolute -top-1.5 -right-2 min-w-[19px] h-[19px] px-1 rounded-full border-2 border-slate-950 text-[10px] font-bold leading-[15px] text-center tabular-nums text-slate-950" style={{ background: item.accent }}>
+            {item.badge}
+          </span>
+        )}
+        {item.dot && <span className={`absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-950 ${DOT_STYLE[item.dot]}`} aria-hidden="true"></span>}
+      </span>
+      <span className="max-w-full truncate">{item.label}</span>
+    </button>
+  );
+};
+
 // Lines of a scene's description that only announced the machine at work; the story reads better without them
 const NOISE = /^(analysis complete\.?|initiali[sz]ing simulation\.*|waiting for .*\.\.\.)$/i;
 
@@ -104,6 +166,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [complaining, setComplaining] = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const importRef = useRef<HTMLInputElement>(null);
+  // The section open last time, except an empty Scene: with nothing to show yet, Create comes first
+  const [section, setSection] = useState<Section>(() => {
+    const saved = savedSection();
+    return saved === 'about' && !simulationData ? 'create' : saved;
+  });
+  const [unseen, setUnseen] = useState(false); // A new scene arrived while another section was shown
+
+  const show = (next: Section) => {
+    setSection(next);
+    try { localStorage.setItem(SECTION_KEY, next); } catch { /* Not remembered: fine */ }
+  };
+
+  // Starting a generation from Create shows its progress (and then its story) under Scene
+  useEffect(() => { if (loading && section === 'create') show('about'); }, [loading]);
+  // A problem with a request is explained under Scene
+  useEffect(() => { if (error && section === 'create') show('about'); }, [error]);
+  // A scene that arrives while another section is open gets a dot on Scene until it is looked at
+  useEffect(() => { if (simulationData && section !== 'about') setUnseen(true); }, [simulationData]);
+  useEffect(() => { if (section === 'about') setUnseen(false); }, [section]);
+
+  // The menu bar, built from what the app can do right now
+  const sections: MenuItem[] = [
+    { id: 'create', label: 'Create', icon: Wand2, accent: '#67b5a8', tour: 'create',
+      hint: 'Solve a textbook problem, or turn a video or a sentence into a 3D scene', onSelect: () => show('create') },
+    { id: 'demos', label: 'Demos', icon: Compass, accent: '#7fb8d1', tour: 'demos', badge: demos.length,
+      hint: 'Ready-made scenes that load instantly, free', onSelect: () => show('demos') },
+    { id: 'library', label: 'Library', icon: BookMarked, accent: '#ab9edb', tour: 'library', badge: library.length || undefined,
+      hint: 'Save, share, export and open your simulations', onSelect: () => show('library') },
+    { id: 'about', label: 'Scene', icon: BookOpen, accent: '#86bb90',
+      dot: loading ? 'busy' : error ? 'alert' : unseen ? 'new' : undefined,
+      hint: loading ? (loadingLabel || 'Working on it…') : simulationData ? `About "${simulationData.title || 'this scene'}", and how it turned out` : 'What happens in the scene, and why',
+      onSelect: () => show('about') },
+  ].map(item => ({ ...item, active: item.id === section }) as MenuItem);
+
+  const actions: MenuItem[] = [];
+  if (apiKeyAvailable && credits !== null) {
+    actions.push({ id: 'credits', label: 'Credits', icon: Coins, accent: '#dcb676', tour: 'credits', badge: credits,
+      dot: credits === 0 ? 'alert' : undefined,
+      hint: credits > 0 ? `${credits} ${credits === 1 ? 'credit' : 'credits'} left. Buy more, or gift some to students, with PayPal.` : 'No credits left: get more with PayPal',
+      onSelect: onOpenCredits, onPointerEnter: onWarmCredits });
+  }
+  actions.push({ id: 'help', label: 'Help', icon: HelpCircle, accent: '#a3cde0',
+    hint: 'Shortcuts, tour and help ( ? )', onSelect: onOpenHelp });
+  const current = sections.find(s => s.active) ?? sections[0];
 
   // Typewriter effect
   useEffect(() => {
@@ -194,27 +300,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <aside className="w-full h-full flex flex-col gap-3 font-sans overflow-y-auto overscroll-contain pr-0.5">
+    <aside className="w-full h-full flex gap-2.5 font-sans">
 
-      {/* Brand */}
-      <div className="shrink-0 flex items-center justify-between px-1.5 pt-1">
-        <Wordmark />
-        <div className="flex items-center gap-1">
-          <button onClick={onOpenHelp} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] font-medium text-slate-300 border border-white/[0.08] hover:text-white hover:bg-white/5" title="Shortcuts, tour and help ( ? )">
-            <HelpCircle className="w-3.5 h-3.5" /> Help
-          </button>
-          {onClose && (
-            <button onClick={onClose} className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-white/5" aria-label="Close menu">
-              <X className="w-5 h-5" />
-            </button>
-          )}
+      {/* The menu bar: every part of the app, one click away */}
+      <nav className="shrink-0 w-[68px] h-full flex flex-col items-center gap-1 py-3 px-1.5 rounded-2xl bg-slate-900/50 backdrop-blur-sm border border-white/[0.06] shadow-calm overflow-y-auto overflow-x-hidden" aria-label="Main menu">
+        <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04]" title="Equilibria"><LogoMark className="w-7 h-7" /></span>
+        {sections.map(item => <MenuButton key={item.id} item={item} />)}
+        <span className="flex-1 min-h-3" aria-hidden="true"></span>
+        <span className="w-8 h-px bg-white/10 mb-1" aria-hidden="true"></span>
+        {actions.map(item => <MenuButton key={item.id} item={item} />)}
+      </nav>
+
+      {/* The chosen section */}
+      <div className="flex-1 min-w-0 h-full flex flex-col gap-3 overflow-y-auto overscroll-contain pr-0.5">
+      <div className="shrink-0 flex items-start justify-between gap-2 px-1 pt-1">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Equilibria</p>
+          <h2 className="font-display text-[22px] leading-tight text-slate-50">{current.label === 'Scene' ? 'This scene' : current.label}</h2>
+          <p className="mt-0.5 text-[12px] leading-snug text-slate-400">{current.hint}</p>
         </div>
+        {onClose && (
+          <button onClick={onClose} className="shrink-0 p-2 rounded-lg text-slate-300 hover:text-white hover:bg-white/5" aria-label="Close menu">
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Create Panel: from a video or from a description */}
-      <div className={panel} data-tour="create">
+      {section === 'create' && (
+      <div className={panel}>
         <div className="flex items-center justify-between mb-3">
-            <span className={panelTitle}><Wand2 className="w-3.5 h-3.5 text-blue-300" /> Create</span>
+            <span className="text-[13px] font-medium text-slate-300">Start from</span>
             {apiKeyAvailable && credits !== null && (
                 <button
                     onClick={onOpenCredits}
@@ -222,7 +338,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onFocus={onWarmCredits}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${credits > 0 ? 'text-amber-200 border-amber-300/25 bg-amber-400/[0.08] hover:bg-amber-400/[0.15]' : 'text-amber-100 border-amber-300/50 bg-amber-400/20 hover:bg-amber-400/30'}`}
                     title="Each new scene or solved problem uses 1 credit. Buy more with PayPal."
-                    data-tour="credits"
                 >
                     <Coins className="w-3.5 h-3.5" />
                     <span className="tabular-nums">{credits}</span> {credits === 1 ? 'credit' : 'credits'}
@@ -383,11 +498,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
              </div>
         )}
       </div>
+      )}
 
       {/* Demo Library */}
-      <div className={panel} data-tour="demos">
+      {section === 'demos' && (
+      <div className={panel}>
         <div className="flex items-center justify-between mb-3">
-            <span className={panelTitle}><Compass className="w-3.5 h-3.5 text-blue-300" /> Demos</span>
+            <span className="text-[13px] font-medium text-slate-300">Pick one to open it</span>
             <span className="text-[12px] text-slate-500 ml-2">{demos.length} free scenes</span>
         </div>
         <div className="grid grid-cols-2 gap-1.5">
@@ -411,11 +528,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             })}
         </div>
       </div>
+      )}
 
       {/* My Library: save, share, export, import */}
-      <div className={panel} data-tour="library">
+      {section === 'library' && (
+      <div className={panel}>
         <div className="flex items-center justify-between mb-3">
-            <span className={panelTitle}><BookMarked className="w-3.5 h-3.5 text-blue-300" /> My library</span>
+            <span className="text-[13px] font-medium text-slate-300">Saved in this browser</span>
             <span className="text-[12px] text-slate-500">{library.length} saved</span>
         </div>
 
@@ -463,7 +582,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {library.length === 0 ? (
             <p className="text-[12px] leading-snug text-slate-500">{simulationData ? 'Press Save to keep this scene here, in this browser.' : 'Nothing saved yet. Scenes you save stay here, in this browser.'}</p>
         ) : (
-            <ul className="space-y-1 max-h-36 overflow-y-auto custom-scrollbar pr-0.5">
+            <ul className="space-y-1 max-h-[55vh] overflow-y-auto custom-scrollbar pr-0.5">
                 {library.map(entry => (
                     <li key={entry.id} className="group flex items-center gap-1 rounded-lg bg-slate-950/40 border border-white/5 hover:border-white/15">
                         <button
@@ -492,9 +611,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </ul>
         )}
       </div>
+      )}
 
       {/* Rating: generated scenes only (the built-in demos are not rated) */}
-      {simulationData && !simulationData.demoMode && !loading && (
+      {section === 'about' && simulationData && !simulationData.demoMode && !loading && (
          <div className="shrink-0 bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl px-4 py-2.5 shadow-calm">
              <div className="flex items-center justify-between gap-2">
                  <span className="text-[13px] text-slate-300">{rating === 'up' ? 'Glad you liked it' : rating === 'down' ? 'Thanks, noted for next time' : 'How did this scene turn out?'}</span>
@@ -545,9 +665,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* About this scene: what is happening and why, in plain words */}
+      {section === 'about' && (
       <div className="flex-1 min-h-[170px] bg-slate-900/40 backdrop-blur-sm border border-white/[0.06] rounded-2xl flex flex-col overflow-hidden shadow-calm">
          <div className="shrink-0 flex items-center px-4 pt-3.5 pb-2 select-none">
-            <span className={panelTitle}><BookOpen className="w-3.5 h-3.5 text-blue-300" /> About this scene</span>
+            <span className={`${panelTitle} min-w-0`}><BookOpen className="w-3.5 h-3.5 shrink-0 text-blue-300" /> <span className="truncate">{simulationData && !loading ? (simulationData.title || 'What happens, and why') : 'What happens, and why'}</span></span>
          </div>
 
          <div className="flex-1 overflow-y-auto px-4 pb-4 text-[13px] leading-relaxed">
@@ -587,11 +708,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
          </div>
       </div>
+      )}
 
       {/* A quiet status line */}
       <div className="shrink-0 flex items-center gap-2.5 px-2 pb-1 text-[12px] text-slate-400" role="status" aria-live="polite">
         <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-300 animate-pulse' : error ? 'bg-red-300' : simulationData ? 'bg-blue-300' : 'bg-slate-500'}`}></span>
         {loading ? 'Thinking it through…' : error ? 'Paused: see the note above' : simulationData ? 'Simulation running' : 'Ready when you are'}
+      </div>
       </div>
 
     </aside>
