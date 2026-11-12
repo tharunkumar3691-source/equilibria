@@ -17,7 +17,7 @@ import { frameShot, shotPoints, sceneBox, fitWholeScene } from '../lib/framing';
 import { createHuman, isHumanKind, Human } from '../lib/humans';
 import { realMaterial, addGround } from '../lib/sceneKit';
 import { Timeline } from '../lib/timeline';
-import { ThemeController, ThemeId, DEFAULT_SCENE_THEME } from '../lib/themes';
+import { ThemeController, THEMES, ThemeId, DEFAULT_SCENE_THEME } from '../lib/themes';
 import { RangeSlider, formatValue } from './RangeSlider';
 import { buildEnvironment, chooseSetting, EnvHandle, EnvironmentSpec, SETTING_PLACES } from '../lib/environments';
 import { DEMOS } from '../lib/demos';
@@ -213,6 +213,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   // Every scene (the demos and the ones people generate) opens on the space backdrop and lighting; the
   // scene's own look stays one click away under "Scene" in the settings
   const themeRef = useRef<ThemeId>(DEFAULT_SCENE_THEME);
+  const [theme, setTheme] = useState<ThemeId>(DEFAULT_SCENE_THEME);
   const [showVectors, setShowVectors] = useState(false);
   const showVectorsRef = useRef(false);
   const [rulerMode, setRulerMode] = useState(false);
@@ -774,6 +775,18 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       }
   };
 
+  // --- BACKDROP ---
+  // Changes the backdrop under the Realistic setting: it comes off first and goes back on top after
+  const changeTheme = (id: ThemeId) => {
+      themeRef.current = id;
+      setTheme(id);
+      const had = !!settingRef.current;
+      clearSetting();
+      if (themeControllerRef.current) themeControllerRef.current.apply(id);
+      if (had) buildSetting();
+      syncLighting();
+  };
+
   // The lighting sliders show the lights as they now are (a backdrop brings its own sun and fill)
   const syncLighting = () => {
       const sun = dirLightRef.current, ambient = ambientLightRef.current;
@@ -866,9 +879,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
           );
           dirLightRef.current.updateMatrix();
       }
-      // Under the scene's own look, the change becomes part of that look, so switching to another backdrop
-      // and back keeps it
-      if (themeRef.current === 'original' && !settingRef.current && themeControllerRef.current) themeControllerRef.current.capture();
   };
   
 
@@ -2947,6 +2957,25 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                           </>
                       ) : (
                           <>
+                              <div className="space-y-1.5 pb-3 border-b border-white/5">
+                                  <div className="flex justify-between items-baseline text-[12px] leading-tight">
+                                      <span className="text-slate-200 font-medium">Backdrop</span>
+                                      <span className="text-[11px] text-slate-400">{THEMES.find(t => t.id === theme)?.label}</span>
+                                  </div>
+                                  <div className="grid grid-cols-6 gap-1">
+                                      {THEMES.map(t => (
+                                          <button
+                                              key={t.id}
+                                              onClick={() => changeTheme(t.id)}
+                                              title={t.label}
+                                              aria-label={`${t.label} backdrop`}
+                                              aria-pressed={theme === t.id}
+                                              className={`h-7 rounded-md border transition-transform ${theme === t.id ? 'border-sky-300 ring-1 ring-sky-300 scale-105' : 'border-white/15 hover:border-white/40'}`}
+                                              style={{ background: t.swatch }}
+                                          ></button>
+                                      ))}
+                                  </div>
+                              </div>
                               <div className="space-y-1.5">
                                   <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
                                       <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Sound volume</span>

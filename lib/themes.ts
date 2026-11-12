@@ -1,60 +1,67 @@
-// Environment themes: backdrop, fog colour and lighting that can be swapped under any scene.
-// 'original' is whatever the scene itself set up; the others replace only the backdrop and lights,
-// never the scene's own objects.
+// Backdrops: a simple painted sky with fog, floor colour and lighting to match, swapped in under any scene.
+// They replace only the sky, the floor colour and the lights, never the scene's own objects.
 import * as THREE from 'three';
 
-// Every scene is shown in Space; 'original' is the scene's own look, used only when a background colour is hand-picked
-export type ThemeId = 'original' | 'space';
+export type ThemeId = 'space' | 'nebula' | 'aurora' | 'sunset' | 'eclipse' | 'galaxy';
 
 // The look every scene opens with, generated ones included
 export const DEFAULT_SCENE_THEME: ThemeId = 'space';
 
+type Ctx = CanvasRenderingContext2D;
+
 interface ThemeSpec {
   label: string;
   swatch: string;                 // CSS background for the picker button
-  top: string; bottom: string;    // Backdrop gradient
+  paint: (c: Ctx) => void;        // The sky, drawn over the view (only the top part shows above the floor)
+  floor: string;                  // Colour for the scene's plain floor
   fog: string;
   ambient: [string, number];
   sun: [string, number];
-  hemisphere?: [string, string, number];
-  stars?: number;
-  paint?: (c: CanvasRenderingContext2D) => void;   // A painted picture in place of the gradient
-  floor?: string;                                  // Colour for the scene's plain floor
+  stars?: number;                 // Crisp stars round the scene
 }
 
-// Painting helpers for the painted backdrop: a 1024 x 512 picture, y = 0 at the top of the view
+// A 1024 x 512 picture, y = 0 at the top of the view
 const W = 1024, H = 512;
 const seeded = (seed: number) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-function glow(c: CanvasRenderingContext2D, x: number, y: number, r: number, colour: string, flatten = 1) {
+
+function gradient(c: Ctx, stops: [number, string][]) {
+  const g = c.createLinearGradient(0, 0, 0, H);
+  stops.forEach(([at, colour]) => g.addColorStop(at, colour));
+  c.fillStyle = g;
+  c.fillRect(0, 0, W, H);
+}
+
+// A soft glow that fades to its own colour, see-through (fading to transparent black would leave grey edges)
+function glow(c: Ctx, x: number, y: number, r: number, colour: string, flatten = 1) {
   c.save();
   c.translate(x, y);
   c.scale(1, flatten);
   const g = c.createRadialGradient(0, 0, 0, 0, 0, r);
   g.addColorStop(0, colour);
-  // Fades to the same colour, see-through (fading to transparent black would leave grey edges)
   g.addColorStop(1, colour.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgba($1,$2,$3,0)'));
   c.fillStyle = g;
   c.fillRect(-r, -r, r * 2, r * 2);
   c.restore();
 }
 
+function starDots(c: Ctx, seed: number, count: number, maxY = H) {
+  const rand = seeded(seed);
+  for (let i = 0; i < count; i++) {
+    const big = rand() < 0.06;
+    c.fillStyle = `rgba(255,255,255,${0.3 + rand() * 0.6})`;
+    c.fillRect(rand() * W, rand() * maxY, big ? 2 : 1, big ? 2 : 1);
+  }
+}
+
 // Deep space: black, coloured nebulae, dense stars and a faint distant galaxy
-function paintSpace(c: CanvasRenderingContext2D) {
-  const sky = c.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#010008'); sky.addColorStop(0.5, '#06041a'); sky.addColorStop(1, '#010006');
-  c.fillStyle = sky;
-  c.fillRect(0, 0, W, H);
+function paintSpace(c: Ctx) {
+  gradient(c, [[0, '#010008'], [0.5, '#06041a'], [1, '#010006']]);
   c.globalCompositeOperation = 'lighter';
   glow(c, W * 0.68, H * 0.22, 260, 'rgba(168,85,247,0.28)', 0.55);
   glow(c, W * 0.6, H * 0.3, 180, 'rgba(236,72,153,0.18)', 0.6);
   glow(c, W * 0.3, H * 0.34, 240, 'rgba(59,130,246,0.2)', 0.5);
   c.globalCompositeOperation = 'source-over';
-  const rand = seeded(23);
-  for (let i = 0; i < 1400; i++) {
-    const big = rand() < 0.06;
-    c.fillStyle = `rgba(255,255,255,${0.35 + rand() * 0.65})`;
-    c.fillRect(rand() * W, rand() * H, big ? 2 : 1, big ? 2 : 1);
-  }
+  starDots(c, 23, 1400);
   c.save();
   c.translate(W * 0.86, H * 0.14);
   c.rotate(-0.4);
@@ -65,40 +72,141 @@ function paintSpace(c: CanvasRenderingContext2D) {
   c.restore();
 }
 
-// The painted picture is made once and kept
-let spacePicture: THREE.CanvasTexture | null = null;
-function paintedTexture(paint: (c: CanvasRenderingContext2D) => void): THREE.Texture {
-  if (spacePicture) return spacePicture;
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  paint(canvas.getContext('2d')!);
-  spacePicture = new THREE.CanvasTexture(canvas);
-  spacePicture.colorSpace = THREE.SRGBColorSpace;
-  spacePicture.userData.shared = true;
-  return spacePicture;
+// Nebula: one big pink and violet cloud with a cool blue edge
+function paintNebula(c: Ctx) {
+  gradient(c, [[0, '#07021a'], [0.45, '#140630'], [1, '#05010e']]);
+  starDots(c, 7, 900);
+  c.globalCompositeOperation = 'lighter';
+  glow(c, W * 0.74, H * 0.17, 330, 'rgba(192,38,211,0.36)', 0.5);
+  glow(c, W * 0.82, H * 0.14, 180, 'rgba(236,72,153,0.38)', 0.6);
+  glow(c, W * 0.55, H * 0.22, 240, 'rgba(34,211,238,0.18)', 0.45);
+  glow(c, W * 0.8, H * 0.15, 50, 'rgba(255,220,250,0.5)');
+  c.globalCompositeOperation = 'source-over';
 }
 
-const SPECS: Record<Exclude<ThemeId, 'original'>, ThemeSpec> = {
+// Aurora: green curtains of light over a dark blue night
+function paintAurora(c: Ctx) {
+  gradient(c, [[0, '#020814'], [0.35, '#05162a'], [0.5, '#0a2a3a'], [1, '#03101a']]);
+  starDots(c, 11, 700, H * 0.4);
+  c.globalCompositeOperation = 'lighter';
+  for (let x = 0; x < W; x += 2) {
+    const t = (x / W) * Math.PI * 2;
+    const foot = H * (0.3 + 0.03 * Math.sin(t * 2 + 0.5));
+    const reach = H * (0.1 + 0.1 * Math.sin(t * 3 + 1) ** 2);
+    const a = 0.3 * (0.35 + 0.65 * Math.abs(Math.sin(x * 0.03) * Math.sin(x * 0.007 + 1)));
+    const g = c.createLinearGradient(0, foot, 0, foot - reach);
+    g.addColorStop(0, 'rgba(91,255,180,0)');
+    g.addColorStop(0.08, `rgba(91,255,180,${a})`);
+    g.addColorStop(0.5, `rgba(45,212,191,${a * 0.4})`);
+    g.addColorStop(1, 'rgba(168,85,247,0)');
+    c.fillStyle = g;
+    c.fillRect(x, foot - reach, 2, reach);
+  }
+  c.globalCompositeOperation = 'source-over';
+}
+
+// Sunset: indigo overhead warming to orange, with a low sun
+function paintSunset(c: Ctx) {
+  gradient(c, [[0, '#141243'], [0.1, '#3a1d63'], [0.18, '#8a3a78'], [0.25, '#f07a4a'], [0.31, '#ffc27a'], [0.42, '#7a3a4a'], [1, '#2a1530']]);
+  starDots(c, 5, 60, H * 0.07);
+  const x = W * 0.8, y = H * 0.27;
+  c.globalCompositeOperation = 'lighter';
+  glow(c, x, y, 200, 'rgba(255,160,80,0.4)', 0.45);
+  glow(c, x, y, 60, 'rgba(255,230,170,0.7)');
+  c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#ffe9bd';
+  c.beginPath();
+  c.arc(x, y, 22, 0, Math.PI * 2);
+  c.fill();
+  // A few thin clouds across the glow
+  [[0.62, 0.22, 160], [0.88, 0.2, 120], [0.35, 0.18, 140]].forEach(([cx, cy, r]) => glow(c, W * cx, H * cy, r, 'rgba(110,40,90,0.45)', 0.08));
+}
+
+// Eclipse: a black sun ringed by a glowing corona
+function paintEclipse(c: Ctx) {
+  gradient(c, [[0, '#000000'], [0.5, '#05060c'], [1, '#0a0a14']]);
+  starDots(c, 3, 900);
+  const x = W * 0.83, y = H * 0.14, r = 28;
+  c.globalCompositeOperation = 'lighter';
+  glow(c, x, y, 170, 'rgba(255,190,120,0.16)');
+  glow(c, x, y, 70, 'rgba(255,225,180,0.6)');
+  c.globalCompositeOperation = 'source-over';
+  c.fillStyle = '#000000';
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = 'rgba(255,244,225,0.9)';
+  c.lineWidth = 1.5;
+  c.stroke();
+}
+
+// Galaxy: a soft band of starlight across the sky with a warm core
+function paintGalaxy(c: Ctx) {
+  gradient(c, [[0, '#03030b'], [0.45, '#080a1a'], [1, '#03030a']]);
+  starDots(c, 17, 900);
+  const band = (t: number) => H * (0.42 - 0.34 * t);
+  c.globalCompositeOperation = 'lighter';
+  for (let i = 0; i <= 60; i++) glow(c, (i / 60) * W, band(i / 60), 90, 'rgba(150,160,230,0.07)', 0.5);
+  glow(c, W * 0.82, band(0.82), 130, 'rgba(255,210,160,0.28)', 0.45);
+  glow(c, W * 0.82, band(0.82), 40, 'rgba(255,240,220,0.5)', 0.6);
+  const rand = seeded(29);
+  for (let i = 0; i < 1500; i++) {
+    const t = rand(), spread = (rand() + rand() + rand() - 1.5) * 40;
+    c.fillStyle = `rgba(255,255,255,${0.2 + rand() * 0.5})`;
+    c.fillRect(t * W, band(t) + spread, 1, 1);
+  }
+  c.globalCompositeOperation = 'source-over';
+}
+
+const SPECS: Record<ThemeId, ThemeSpec> = {
   space: {
-    label: 'Space', swatch: 'radial-gradient(ellipse 14% 5% at 80% 24%, #ffe9c4, transparent), radial-gradient(circle at 70% 40%, rgba(168,85,247,.6), transparent 45%), radial-gradient(circle at 30% 60%, rgba(59,130,246,.45), transparent 40%), #02010a',
-    top: '#010008', bottom: '#010006', fog: '#05040f', paint: paintSpace, floor: '#151729',
+    label: 'Space', paint: paintSpace, floor: '#151729', fog: '#05040f',
+    swatch: 'radial-gradient(ellipse 14% 5% at 80% 24%, #ffe9c4, transparent), radial-gradient(circle at 70% 40%, rgba(168,85,247,.6), transparent 45%), radial-gradient(circle at 30% 60%, rgba(59,130,246,.45), transparent 40%), #02010a',
     ambient: ['#a5b4fc', 0.3], sun: ['#ffffff', 1.9], stars: 2200
+  },
+  nebula: {
+    label: 'Nebula', paint: paintNebula, floor: '#1d1430', fog: '#120822',
+    swatch: 'radial-gradient(circle at 62% 45%, rgba(236,72,153,.85), transparent 45%), radial-gradient(circle at 35% 60%, rgba(34,211,238,.45), transparent 40%), #10052a',
+    ambient: ['#e9d5ff', 0.35], sun: ['#fdf4ff', 1.8], stars: 1500
+  },
+  aurora: {
+    label: 'Aurora', paint: paintAurora, floor: '#0f1f26', fog: '#081a24',
+    swatch: 'linear-gradient(transparent 20%, rgba(91,255,180,.7) 55%, transparent 75%), linear-gradient(#020814, #0a2a3a)',
+    ambient: ['#a7f3d0', 0.32], sun: ['#e0fff4', 1.6], stars: 1200
+  },
+  sunset: {
+    label: 'Sunset', paint: paintSunset, floor: '#2b1c2a', fog: '#3b1f35',
+    swatch: 'radial-gradient(circle at 70% 70%, #ffe9bd 8%, transparent 30%), linear-gradient(#3a1d63, #8a3a78 45%, #f07a4a 75%, #ffc27a)',
+    ambient: ['#fed7aa', 0.45], sun: ['#ffb37a', 2.1]
+  },
+  eclipse: {
+    label: 'Eclipse', paint: paintEclipse, floor: '#15151d', fog: '#06060c',
+    swatch: 'radial-gradient(circle at 55% 45%, #000 18%, #ffe1b4 21%, rgba(255,190,120,.35) 32%, transparent 50%), #020206',
+    ambient: ['#cbd5e1', 0.25], sun: ['#fff1d6', 1.7], stars: 1800
+  },
+  galaxy: {
+    label: 'Galaxy', paint: paintGalaxy, floor: '#141a2c', fog: '#070914',
+    swatch: 'radial-gradient(ellipse 22% 12% at 60% 40%, rgba(255,214,170,.85), transparent), linear-gradient(160deg, transparent 35%, rgba(150,160,230,.4) 50%, transparent 65%), #04040e',
+    ambient: ['#c7d2fe', 0.3], sun: ['#ffffff', 1.8], stars: 1800
   }
 };
 
-function gradientTexture(top: string, bottom: string): THREE.Texture {
+export const THEMES: { id: ThemeId; label: string; swatch: string }[] =
+  (Object.keys(SPECS) as ThemeId[]).map(id => ({ id, label: SPECS[id].label, swatch: SPECS[id].swatch }));
+
+// Each painted sky is made once and kept
+const pictures = new Map<ThemeId, THREE.CanvasTexture>();
+function picture(id: ThemeId): THREE.Texture {
+  let texture = pictures.get(id);
+  if (texture) return texture;
   const canvas = document.createElement('canvas');
-  canvas.width = 4;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
-  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  gradient.addColorStop(0, top);
-  gradient.addColorStop(1, bottom);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 4, 256);
-  const texture = new THREE.CanvasTexture(canvas);
+  canvas.width = W;
+  canvas.height = H;
+  SPECS[id].paint(canvas.getContext('2d')!);
+  texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.userData.shared = true;
+  pictures.set(id, texture);
   return texture;
 }
 
@@ -135,12 +243,11 @@ interface Snapshot {
 export class ThemeController {
   private original: Snapshot;
   private extras: THREE.Object3D[] = [];
-  private texture: THREE.Texture | null = null;
   // The scene's plain floor, painted in the theme's colour on a copy of its material
   private floor: { mesh: THREE.Mesh; material: THREE.Material | THREE.Material[] } | null = null;
-  // The scene's own sky-fill lights (a ground's daylight), switched off under a theme that brings its own light
+  // The scene's own sky-fill lights (a ground's daylight), switched off under a backdrop that brings its own light
   private quieted: { light: THREE.Light; was: number }[] = [];
-  current: ThemeId = 'original';
+  current: ThemeId | null = null;
 
   constructor(private scene: THREE.Scene, private ambient: THREE.AmbientLight, private sun: THREE.DirectionalLight) {
     this.original = this.read();
@@ -164,7 +271,6 @@ export class ThemeController {
       if (mesh.material) (mesh.material as THREE.Material).dispose();
     });
     this.extras = [];
-    if (this.texture) { this.texture.dispose(); this.texture = null; }
   }
 
   // Puts the scene's own look back (call before a scene is rebuilt)
@@ -185,41 +291,31 @@ export class ThemeController {
     this.ambient.intensity = o.ambientIntensity;
     this.sun.color.copy(o.sunColor);
     this.sun.intensity = o.sunIntensity;
+    this.current = null;
   }
 
-  // Remembers the scene's own look as 'original' (call after a scene has been built, while restored)
+  // Remembers the scene's own look (call after a scene has been built, before a backdrop goes on)
   capture() {
     this.original = this.read();
   }
 
   apply(id: ThemeId) {
     this.restore();
+    const spec = SPECS[id] || SPECS[DEFAULT_SCENE_THEME];
     this.current = id;
-    if (id === 'original') return;
-    const spec = SPECS[id];
-    if (spec.paint) {
-      this.scene.background = paintedTexture(spec.paint);
-    } else {
-      this.texture = gradientTexture(spec.top, spec.bottom);
-      this.scene.background = this.texture;
-    }
-    if (spec.floor) this.paintFloor(spec.floor);
+    this.scene.background = picture(SPECS[id] ? id : DEFAULT_SCENE_THEME);
+    this.paintFloor(spec.floor);
     const fog = this.scene.fog as THREE.Fog | null;
     if (fog && fog.color) fog.color.set(spec.fog);
     this.ambient.color.set(spec.ambient[0]);
     this.ambient.intensity = spec.ambient[1];
     this.sun.color.set(spec.sun[0]);
     this.sun.intensity = spec.sun[1];
-    // A blue daylight fill from the scene's own ground would light up a night or space sky
+    // A blue daylight fill from the scene's own ground would wash out the backdrop
     this.scene.traverse(o => {
       const light = o as THREE.HemisphereLight;
       if (light.isHemisphereLight && light.intensity > 0) { this.quieted.push({ light, was: light.intensity }); light.intensity = 0; }
     });
-    if (spec.hemisphere) {
-      const hemi = new THREE.HemisphereLight(spec.hemisphere[0], spec.hemisphere[1], spec.hemisphere[2]);
-      this.scene.add(hemi);
-      this.extras.push(hemi);
-    }
     if (spec.stars) {
       const stars = starField(spec.stars);
       this.scene.add(stars);
