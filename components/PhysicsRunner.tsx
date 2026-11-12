@@ -18,6 +18,7 @@ import { createHuman, isHumanKind, Human } from '../lib/humans';
 import { realMaterial, addGround } from '../lib/sceneKit';
 import { Timeline } from '../lib/timeline';
 import { ThemeController, THEMES, ThemeId, DEFAULT_SCENE_THEME } from '../lib/themes';
+import { RangeSlider, formatValue } from './RangeSlider';
 import { buildEnvironment, chooseSetting, EnvHandle, EnvironmentSpec, SETTING_PLACES } from '../lib/environments';
 import { DEMOS } from '../lib/demos';
 import { SceneRecorder, recordingSupported, downloadBlob, timestampName } from '../lib/capture';
@@ -148,6 +149,41 @@ function applySlider(world: CANNON.World, objects: SimObject[], slider: Simulati
     });
 }
 
+// --- EXTRA CONTROLS ---
+// Gravity, bounciness, friction and air drag for every scene, beside the scene's own sliders
+type ExtraId = 'gravity' | 'restitution' | 'friction' | 'damping';
+interface ExtraControl { id: ExtraId; label: string; hint: string; min: number; max: number; step: number; base: number; accent: string }
+
+// Gravity presets, as multiples of the scene's own gravity (taken as Earth's)
+const GRAVITY_PRESETS: { label: string; factor: number }[] = [
+    { label: 'Moon', factor: 1.62 / 9.81 },
+    { label: 'Mars', factor: 3.71 / 9.81 },
+    { label: 'Earth', factor: 1 },
+    { label: 'Jupiter', factor: 24.79 / 9.81 }
+];
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+
+// The extra controls for a freshly built world: only for what the scene's own sliders do not cover, and
+// bounciness and friction only when there is a floor for things to land and slide on
+function extraControlsFor(world: CANNON.World, sliders: SimulationSlider[], hasFloor: boolean): ExtraControl[] {
+    const covered = new Set<string>(sliders.filter(s => s.targetLabel === 'world' || s.property === 'damping').map(s => s.property));
+    const controls: ExtraControl[] = [];
+    const g = Math.abs(world.gravity.y);
+    if (!covered.has('gravity') && g > 0) {
+        const max = Math.max(5, Math.ceil(g * 3));
+        controls.push({ id: 'gravity', label: 'Gravity', hint: 'How strongly everything is pulled down', min: 0, max, step: max > 40 ? 0.5 : 0.1, base: g, accent: '#a78bfa' });
+    }
+    if (hasFloor && !covered.has('restitution')) controls.push({ id: 'restitution', label: 'Bounciness', hint: '0: things stop dead when they hit; 1: they bounce back fully', min: 0, max: 1, step: 0.01, base: clamp01(world.defaultContactMaterial.restitution), accent: '#f472b6' });
+    if (hasFloor && !covered.has('friction')) controls.push({ id: 'friction', label: 'Friction', hint: '0: ice; 1: rubber on concrete', min: 0, max: 1, step: 0.01, base: clamp01(world.defaultContactMaterial.friction), accent: '#fbbf24' });
+    const moving = world.bodies.filter(b => b.mass > 0);
+    if (!covered.has('damping') && moving.length) controls.push({ id: 'damping', label: 'Air drag', hint: 'How quickly moving things are slowed by the air', min: 0, max: 0.9, step: 0.01, base: clamp01(moving[0].linearDamping), accent: '#38bdf8' });
+    return controls;
+}
+
+const worldSlider = (control: ExtraControl, value: number): SimulationSlider =>
+    ({ label: control.label, targetLabel: 'world', property: control.id, min: control.min, max: control.max, value, step: control.step });
+
 export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, onError, sourceVideoUrl, onOpenHelp, onOpenChat, aiBusy, aiOpen, footer }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   // The scene on show, for the physics world (created once) to read
@@ -262,7 +298,12 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   // Ref to track slider values without triggering re-renders or dependency updates for resetSimulation
   const sliderValuesRef = useRef<Record<string, number>>({});
-  
+  // Controls every scene gets on top of its own sliders (gravity, bounciness, friction, air drag), for
+  // whichever of those the scene does not already offer. 'base' is the scene's own value as built.
+  const [extras, setExtras] = useState<ExtraControl[]>([]);
+  const [extraValues, setExtraValues] = useState<Record<string, number>>({});
+  const extraValuesRef = useRef<Record<string, number>>({});
+
   // Click-to-start: for startMode 'click' the scene is built but time stays frozen until the user clicks
   const [awaitingStart, setAwaitingStart] = useState(false);
   const awaitingStartRef = useRef(false);
@@ -1345,11 +1386,26 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         }
         
         newValues[slider.label] = val;
-        applySlider(worldRef.current!, objectsRef.current, slider, val, false);
+        // A bounciness or friction the user had set is put back after a reset too
+        applySlider(worldRef.current!, objectsRef.current, slider, val, val !== slider.value);
     });
     setSliderValues(newValues);
     sliderValuesRef.current = newValues; // Sync Ref
-    
+
+    // --- EXTRA CONTROLS ---
+    // Read from the world as built, then the user's own values put back when the settings are kept
+    const nextExtras = extraControlsFor(worldRef.current!, simulationData.sliders, !!bounds);
+    const nextExtraValues: Record<string, number> = {};
+    nextExtras.forEach(control => {
+        const kept = keepSettings ? extraValuesRef.current[control.id] : undefined;
+        const value = kept !== undefined ? kept : control.base;
+        nextExtraValues[control.id] = value;
+        if (kept !== undefined && kept !== control.base) applySlider(worldRef.current!, objectsRef.current, worldSlider(control, value), value, true);
+    });
+    setExtras(nextExtras);
+    setExtraValues(nextExtraValues);
+    extraValuesRef.current = nextExtraValues;
+
 
     // Every (re)build of a click-to-start scene waits for the user again
     const needsStart = simulationData.startMode === 'click';
@@ -2486,7 +2542,51 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       else applySlider(worldRef.current, objectsRef.current, slider, newVal, true);
       // No physics step is needed here: the render loop picks the new values up on its next frame
       // (stepping with a zero time step, as this used to, divides by zero inside the solver).
+      wakeAll();
   };
+
+  // Bodies at rest are woken, so a change shows at once (a ball resting on the floor feels new gravity)
+  const wakeAll = () => { worldRef.current?.bodies.forEach(b => { if (b.mass > 0) b.wakeUp(); }); };
+
+  const handleExtraChange = (control: ExtraControl, value: number) => {
+      setExtraValues(prev => ({ ...prev, [control.id]: value }));
+      extraValuesRef.current[control.id] = value;
+      if (!worldRef.current) return;
+      applySlider(worldRef.current, objectsRef.current, worldSlider(control, value), value, true);
+      wakeAll();
+  };
+
+  // Every parameter back to the scene's own value (the speed included)
+  const resetParameters = () => {
+      simulationData.sliders.forEach(s => { if (s.property !== 'scale') handleSliderChange(s.label, s.value); });
+      extras.forEach(control => handleExtraChange(control, control.base));
+      changeSpeed(1);
+  };
+
+  // The gravity control, whichever it is: the scene's own world gravity slider, or the extra one
+  const gravitySlider = simulationData.sliders.find(s => s.targetLabel === 'world' && s.property === 'gravity');
+  const gravityExtra = extras.find(c => c.id === 'gravity');
+  const setGravity = (factor: number) => {
+      if (gravitySlider) handleSliderChange(gravitySlider.label, Math.min(gravitySlider.max, Math.max(gravitySlider.min, +(gravitySlider.value * factor).toFixed(2))));
+      else if (gravityExtra) handleExtraChange(gravityExtra, Math.min(gravityExtra.max, +(gravityExtra.base * factor).toFixed(2)));
+  };
+  const gravityNow = gravitySlider ? sliderValues[gravitySlider.label] : gravityExtra ? extraValues.gravity : undefined;
+  const gravityBase = gravitySlider ? gravitySlider.value : gravityExtra?.base;
+  const presetOn = (factor: number) => gravityNow !== undefined && gravityBase !== undefined && Math.abs(gravityNow - gravityBase * factor) < Math.max(0.02, gravityBase * 0.01);
+  const gravityPresets = gravityBase ? (
+      <div className="flex gap-1 pt-0.5">
+          {GRAVITY_PRESETS.map(p => (
+              <button
+                  key={p.label}
+                  onClick={() => setGravity(p.factor)}
+                  title={`${p.label}'s gravity`}
+                  className={`flex-1 py-0.5 rounded-md text-[10.5px] transition-colors border ${presetOn(p.factor) ? 'bg-violet-500/25 text-violet-100 border-violet-400/50' : 'bg-slate-800/80 text-slate-400 border-transparent hover:text-slate-100'}`}
+              >
+                  {p.label}
+              </button>
+          ))}
+      </div>
+  ) : null;
 
   // Latest versions of the actions the keyboard shortcuts run
   actionsRef.current = {
@@ -2521,7 +2621,6 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       setShowSettings(!showSettings);
   };
 
-  const sliderClass = (thumb: string) => `w-full h-1 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:${thumb} [&::-webkit-slider-thumb]:rounded-full`;
   const card = "w-full bg-slate-900/40 border border-white/[0.06] rounded-2xl";
 
   // The stage: a toolbar above the view, the view itself with nothing drawn over it, a side panel beside
@@ -2797,14 +2896,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                                       <span className="flex items-center gap-1 font-medium"><Gauge className="w-3.5 h-3.5 text-emerald-400" /> Speed</span>
                                       <span className="font-mono tabular-nums text-emerald-300">{speed.toFixed(2)}×</span>
                                   </div>
-                                  <input
-                                      type="range"
-                                      aria-label="Simulation speed"
-                                      min={SPEED_MIN} max={SPEED_MAX} step={0.05}
-                                      value={speed}
-                                      onChange={(e) => changeSpeed(parseFloat(e.target.value))}
-                                      className={sliderClass('bg-emerald-400')}
-                                  />
+                                  <RangeSlider label="Simulation speed" min={SPEED_MIN} max={SPEED_MAX} step={0.05} value={speed} accent="#34d399" onChange={changeSpeed} />
                                   <div className="flex gap-1">
                                       {SPEED_PRESETS.map(preset => (
                                           <button
@@ -2819,22 +2911,57 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                               </div>
 
                               {/* A simulation's own 'scale' slider is replaced by the Speed control above */}
-                              {simulationData.sliders.filter(s => s.property !== 'scale').map((s, i) => (
-                                  <div key={i} className="space-y-1.5">
-                                      <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
-                                          <span>{s.label}</span>
-                                          <span className="font-mono tabular-nums text-slate-400">{sliderValues[s.label]?.toFixed(2)}</span>
+                              {simulationData.sliders.some(s => s.property !== 'scale') && (
+                                  <div className="text-[10.5px] uppercase tracking-wider text-slate-500 font-medium">This scene</div>
+                              )}
+                              {simulationData.sliders.filter(s => s.property !== 'scale').map((s, i) => {
+                                  const value = sliderValues[s.label] ?? s.value;
+                                  const changed = Math.abs(value - s.value) > 1e-9;
+                                  return (
+                                      <div key={i} className="space-y-1">
+                                          <div className="flex justify-between items-baseline gap-2 text-[12px] leading-tight text-slate-300">
+                                              <span>{s.label}</span>
+                                              <span className="flex items-baseline gap-1.5">
+                                                  {changed && <button onClick={() => handleSliderChange(s.label, s.value)} className="text-[10.5px] text-slate-500 hover:text-slate-200" title={`Back to ${formatValue(s.value, s.step || 0.1)}`}>reset</button>}
+                                                  <span className={`font-mono tabular-nums ${changed ? 'text-blue-300' : 'text-slate-400'}`}>{formatValue(value, s.step || 0.1)}</span>
+                                              </span>
+                                          </div>
+                                          <RangeSlider label={s.label} min={s.min} max={s.max} step={s.step || 0.1} value={value} accent="#60a5fa" onChange={v => handleSliderChange(s.label, v)} />
+                                          {s === gravitySlider && gravityPresets}
                                       </div>
-                                      <input
-                                          type="range"
-                                          aria-label={s.label}
-                                          min={s.min} max={s.max} step={s.step || 0.1}
-                                          value={sliderValues[s.label] ?? s.value}
-                                          onChange={(e) => handleSliderChange(s.label, parseFloat(e.target.value))}
-                                          className={sliderClass('bg-blue-400')}
-                                      />
+                                  );
+                              })}
+
+                              {/* Controls every scene gets, for what its own sliders leave out */}
+                              {extras.length > 0 && (
+                                  <div className="pt-2 border-t border-white/5 space-y-3">
+                                      <div className="text-[10.5px] uppercase tracking-wider text-slate-500 font-medium">World</div>
+                                      {extras.map(control => {
+                                          const value = extraValues[control.id] ?? control.base;
+                                          const changed = Math.abs(value - control.base) > 1e-9;
+                                          return (
+                                              <div key={control.id} className="space-y-1" title={control.hint}>
+                                                  <div className="flex justify-between items-baseline gap-2 text-[12px] leading-tight text-slate-300">
+                                                      <span>{control.label}</span>
+                                                      <span className="flex items-baseline gap-1.5">
+                                                          {changed && <button onClick={() => handleExtraChange(control, control.base)} className="text-[10.5px] text-slate-500 hover:text-slate-200" title={`Back to ${formatValue(control.base, control.step)}`}>reset</button>}
+                                                          <span className="font-mono tabular-nums" style={{ color: changed ? control.accent : undefined }}>{formatValue(value, control.step)}</span>
+                                                      </span>
+                                                  </div>
+                                                  <RangeSlider label={control.label} min={control.min} max={control.max} step={control.step} value={value} accent={control.accent} onChange={v => handleExtraChange(control, v)} />
+                                                  {control.id === 'gravity' && gravityPresets}
+                                              </div>
+                                          );
+                                      })}
                                   </div>
-                              ))}
+                              )}
+
+                              <button
+                                  onClick={resetParameters}
+                                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11.5px] text-slate-300 bg-slate-800/70 hover:bg-slate-700/80 hover:text-white transition-colors"
+                              >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Reset all parameters
+                              </button>
                           </>
                       ) : (
                           <>
@@ -2863,13 +2990,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                                       <span className="flex items-center gap-1"><Volume2 className="w-3.5 h-3.5" /> Sound volume</span>
                                       <span className="font-mono text-slate-400">{muted ? 'muted' : `${Math.round(volume * 100)}%`}</span>
                                   </div>
-                                  <input
-                                      type="range" min="0" max="1" step="0.05"
-                                      aria-label="Sound volume"
-                                      value={volume}
-                                      onChange={(e) => { simAudio.unlock(); setVolume(parseFloat(e.target.value)); if (muted) setMuted(false); }}
-                                      className={sliderClass('bg-amber-400')}
-                                  />
+                                  <RangeSlider label="Sound volume" min={0} max={1} step={0.05} value={volume} accent="#fbbf24" onChange={v => { simAudio.unlock(); setVolume(v); if (muted) setMuted(false); }} />
                               </div>
                               <label className="flex items-center justify-between gap-2 text-[12px] leading-tight text-slate-300 cursor-pointer" title="Camera shake on heavy impacts, plus device vibration on phones that support it">
                                   <span className="flex items-center gap-1"><Vibrate className="w-3.5 h-3.5" /> Vibration</span>
@@ -2892,23 +3013,11 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                               </div>
                               <div className="space-y-1.5">
                                   <div className="text-[12px] leading-tight text-slate-300">Light intensity</div>
-                                  <input
-                                      type="range" min="0" max="5" step="0.1"
-                                      aria-label="Light intensity"
-                                      value={lightSettings.intensity}
-                                      onChange={(e) => updateLighting({ ...lightSettings, intensity: parseFloat(e.target.value) })}
-                                      className={sliderClass('bg-amber-400')}
-                                  />
+                                  <RangeSlider label="Light intensity" min={0} max={5} step={0.1} value={lightSettings.intensity} accent="#fbbf24" onChange={v => updateLighting({ ...lightSettings, intensity: v })} />
                               </div>
                               <div className="space-y-1.5">
                                   <div className="text-[12px] leading-tight text-slate-300">Sun position (azimuth)</div>
-                                  <input
-                                      type="range" min="0" max="360"
-                                      aria-label="Sun position"
-                                      value={lightSettings.azimuth}
-                                      onChange={(e) => updateLighting({ ...lightSettings, azimuth: parseFloat(e.target.value) })}
-                                      className={sliderClass('bg-amber-400')}
-                                  />
+                                  <RangeSlider label="Sun position" min={0} max={360} step={1} value={lightSettings.azimuth} accent="#fbbf24" onChange={v => updateLighting({ ...lightSettings, azimuth: v })} />
                               </div>
                           </>
                       )}
