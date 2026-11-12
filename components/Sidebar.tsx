@@ -21,6 +21,7 @@ interface SidebarProps {
   apiKeyAvailable: boolean;
   credits: number | null;          // Scene credits left (null until the server answers)
   onOpenCredits: () => void;
+  onWarmCredits?: () => void;      // The pointer is near the credits button: start loading PayPal
   error?: string | null;
   library: LibraryEntry[];
   onSave: (name: string) => void;
@@ -74,6 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   apiKeyAvailable,
   credits,
   onOpenCredits,
+  onWarmCredits,
   error,
   library,
   onSave,
@@ -216,6 +218,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {apiKeyAvailable && credits !== null && (
                 <button
                     onClick={onOpenCredits}
+                    onPointerEnter={onWarmCredits}
+                    onFocus={onWarmCredits}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${credits > 0 ? 'text-amber-200 border-amber-300/25 bg-amber-400/[0.08] hover:bg-amber-400/[0.15]' : 'text-amber-100 border-amber-300/50 bg-amber-400/20 hover:bg-amber-400/30'}`}
                     title="Each new scene or solved problem uses 1 credit. Buy more with PayPal."
                     data-tour="credits"

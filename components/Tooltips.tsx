@@ -118,7 +118,8 @@ export const Tooltips: React.FC = () => {
             if (el && el === e.target && el.matches(':focus-visible')) begin(el);
         };
         const onBlur = (e: FocusEvent) => { if (current && e.target === current) release(); };
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && visible) { dismissed = true; hide(); } };
+        // Escape hides the tip; Enter or Space acts on the control, like a click
+        const onKey = (e: KeyboardEvent) => { if (visible && (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ')) { dismissed = true; hide(); } };
         // A click acts, so the tip has done its job; scrolling moves the control away from its tip
         const onDismiss = () => { if (current) { dismissed = true; hide(); } };
 
@@ -126,6 +127,7 @@ export const Tooltips: React.FC = () => {
         document.addEventListener('pointerout', onOut, true);
         document.addEventListener('pointermove', onMove, { passive: true });
         document.addEventListener('pointerdown', onDismiss, true);
+        document.addEventListener('click', onDismiss, true);
         document.addEventListener('focusin', onFocus);
         document.addEventListener('focusout', onBlur);
         document.addEventListener('keydown', onKey);
@@ -137,6 +139,7 @@ export const Tooltips: React.FC = () => {
             document.removeEventListener('pointerout', onOut, true);
             document.removeEventListener('pointermove', onMove);
             document.removeEventListener('pointerdown', onDismiss, true);
+            document.removeEventListener('click', onDismiss, true);
             document.removeEventListener('focusin', onFocus);
             document.removeEventListener('focusout', onBlur);
             document.removeEventListener('keydown', onKey);

@@ -32,6 +32,10 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const holder = useRef<HTMLDivElement>(null);
   // The assistant's order is used once, and only while the same pack and purpose are chosen
   const prepared = useRef<PreparedOrder | null>(request.order ?? null);
+  // PayPal's buttons are drawn once; they read the current choice when clicked, so changing the pack or
+  // who it is for is instant instead of reloading PayPal
+  const choice = useRef({ packId, purpose });
+  choice.current = { packId, purpose };
 
   // Escape closes, as with the other dialogs (not in the middle of confirming a payment)
   useEffect(() => {
@@ -40,7 +44,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, phase]);
 
-  // PayPal's buttons for the chosen pack and purpose (rebuilt when either changes)
+  // PayPal's buttons, drawn once for the whole dialog
   useEffect(() => {
     if (!status?.paypal) {
       if (!status) setMessage('Could not reach the Equilibria server. Check your connection and reload the page.');
@@ -58,10 +62,11 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
         style: { layout: 'vertical', shape: 'pill', color: 'gold', label: 'pay', height: 42, tagline: false },
         createOrder: async () => {
           setMessage(null);
+          const { packId: chosenPack, purpose: chosenPurpose } = choice.current;
           const ready = prepared.current;
           prepared.current = null;
-          if (ready && ready.pack === packId && ready.purpose === purpose) return ready.id;
-          try { return (await createPayPalOrder(packId, purpose)).id; }
+          if (ready && ready.pack === chosenPack && ready.purpose === chosenPurpose) return ready.id;
+          try { return (await createPayPalOrder(chosenPack, chosenPurpose)).id; }
           catch (error: any) { setMessage(error.message); throw error; }
         },
         onApprove: async (data: { orderID: string }, actions: any) => {
@@ -103,8 +108,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
         });
     }).catch((error: Error) => { if (!gone) { setMessage(error.message); setPhase('unavailable'); } });
     return () => { gone = true; try { buttons?.close?.(); } catch {} };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packId, purpose, status?.paypal?.clientId]);
+  }, [status?.paypal?.clientId]);
 
   const claim = async () => {
     setClaiming(true);
@@ -133,6 +137,9 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
       <div className="w-full max-w-md max-h-[92vh] overflow-y-auto bg-slate-900/95 border border-white/[0.08] rounded-3xl shadow-calm" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-slate-900/95 backdrop-blur-sm border-b border-white/[0.06]">
           <h2 className="flex items-center gap-2 font-display text-lg text-slate-50"><Coins className="w-4 h-4 text-amber-300" /> Credits</h2>
+          <span className="ml-auto mr-2 px-3 py-1 rounded-full text-[12px] font-medium text-amber-200 border border-amber-300/25 bg-amber-400/[0.08]" aria-label={`Your balance: ${credits} credits`}>
+            You have <span className="tabular-nums">{credits}</span> {credits === 1 ? 'credit' : 'credits'}
+          </span>
           <button onClick={onClose} disabled={phase === 'paying'} className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-40" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
@@ -156,36 +163,20 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
             </div>
           ) : (
             <>
-              <div className={`rounded-2xl p-4 border ${request.reason === 'empty' ? 'bg-amber-400/[0.07] border-amber-300/20' : 'bg-slate-950/40 border-white/[0.06]'}`}>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[13px] text-slate-300">{request.reason === 'empty' ? 'You are out of credits' : 'Your balance'}</span>
-                  <span className="font-display text-2xl text-slate-50 tabular-nums">{credits}</span>
-                </div>
-                <ul className="mt-3 space-y-1.5 text-[12px] leading-snug text-slate-400">
-                  <li className="flex gap-2"><Sparkles className="w-3.5 h-3.5 mt-px shrink-0 text-blue-300" /> Each new scene or solved problem uses 1 credit. Demos, your library and chat edits are free.</li>
-                  <li className="flex gap-2"><RotateCcw className="w-3.5 h-3.5 mt-px shrink-0 text-emerald-300" /> Verified or free: if a scene never passes its physics check, the credit comes back by itself.</li>
-                </ul>
-              </div>
+              {request.reason === 'empty' && (
+                <p className="text-[13px] text-amber-100 bg-amber-400/[0.08] border border-amber-300/20 rounded-xl px-3.5 py-2.5">
+                  You are out of credits. Pick a pack to keep creating{canClaim ? ', or take a free share of the student pool' : ''}.
+                </p>
+              )}
 
-              {/* The pay-it-forward pool: what sponsors have given, and today's share for a student with none left */}
-              {pool && (
-                <div className="rounded-2xl p-4 border bg-emerald-400/[0.05] border-emerald-300/15">
-                  <div className="flex items-start gap-3">
-                    <HeartHandshake className="w-4 h-4 mt-0.5 shrink-0 text-emerald-300" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] text-slate-200">Student pool: <span className="font-medium tabular-nums">{pool.credits}</span> credits</p>
-                      <p className="mt-0.5 text-[11px] leading-snug text-slate-400">
-                        {pool.donated
-                          ? `${pool.donated} credits given by ${pool.sponsors} ${pool.sponsors === 1 ? 'sponsor' : 'sponsors'} so far, for students who cannot pay.`
-                          : 'Credits anyone can give to students who cannot pay. Be the first to sponsor.'}
-                      </p>
-                      {canClaim && (
-                        <button onClick={claim} disabled={claiming} className="mt-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-medium disabled:opacity-50">
-                          <Gift className="w-3.5 h-3.5" /> {claiming ? 'Taking…' : `Take ${Math.min(pool.claimable, pool.credits)} free ${Math.min(pool.claimable, pool.credits) === 1 ? 'credit' : 'credits'}`}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+              {/* A student with none left: today's free share of the pool comes first */}
+              {pool && canClaim && (
+                <div className="flex items-center gap-3 rounded-2xl p-3.5 border bg-emerald-400/[0.06] border-emerald-300/20">
+                  <HeartHandshake className="w-5 h-5 shrink-0 text-emerald-300" />
+                  <p className="min-w-0 flex-1 text-[13px] leading-snug text-slate-200">Sponsors have left <span className="font-medium tabular-nums">{pool.credits}</span> free credits for students.</p>
+                  <button onClick={claim} disabled={claiming} className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-medium disabled:opacity-50">
+                    <Gift className="w-3.5 h-3.5" /> {claiming ? 'Taking…' : `Take ${Math.min(pool.claimable, pool.credits)}`}
+                  </button>
                 </div>
               )}
 
@@ -254,10 +245,17 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                 </div>
               )}
 
-              <p className="flex items-start gap-2 text-[11px] leading-snug text-slate-500">
-                <ShieldCheck className="w-3.5 h-3.5 mt-px shrink-0 text-slate-400" />
-                PayPal sandbox: no real money moves. Sign in with a PayPal sandbox test account. Payment details stay with PayPal; Equilibria only sees that the order was paid.
-              </p>
+              {/* How credits work, under the checkout so the choice and the buttons come first */}
+              <ul className="space-y-1.5 pt-1 text-[12px] leading-snug text-slate-400">
+                <li className="flex gap-2"><Sparkles className="w-3.5 h-3.5 mt-px shrink-0 text-blue-300" /> Each new scene or solved problem uses 1 credit. Demos, your library and chat edits are free.</li>
+                <li className="flex gap-2"><RotateCcw className="w-3.5 h-3.5 mt-px shrink-0 text-emerald-300" /> Verified or free: if a scene never passes its physics check, the credit comes back by itself.</li>
+                {pool && !canClaim && (
+                  <li className="flex gap-2"><HeartHandshake className="w-3.5 h-3.5 mt-px shrink-0 text-emerald-300" />
+                    <span>Student pool: <span className="tabular-nums text-slate-300">{pool.credits}</span> credits{pool.donated ? `, given by ${pool.sponsors} ${pool.sponsors === 1 ? 'sponsor' : 'sponsors'}` : ''}. Students with none left can take a free share each day.</span>
+                  </li>
+                )}
+                <li className="flex gap-2"><ShieldCheck className="w-3.5 h-3.5 mt-px shrink-0 text-slate-400" /> PayPal sandbox: no real money moves. Payment details stay with PayPal; Equilibria only sees that the order was paid.</li>
+              </ul>
             </>
           )}
         </div>

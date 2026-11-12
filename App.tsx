@@ -19,7 +19,7 @@ import { LogoMark, Wordmark } from './components/Logo';
 import { Tooltips } from './components/Tooltips';
 import { AiCommandBar } from './components/AiCommandBar';
 import { useSceneEditor } from './lib/useSceneEditor';
-import { Balance, CreditError, CreditStatus, finishGeneration, loadCredits, PreparedOrder, spendCredit } from './lib/credits';
+import { Balance, CreditError, CreditStatus, finishGeneration, loadCredits, loadPayPalSdk, PreparedOrder, spendCredit } from './lib/credits';
 import { BALANCE_EVENT, CHECKOUT_EVENT } from './lib/paymentAgent';
 import { CreditsDialog, CreditsRequest } from './components/CreditsDialog';
 
@@ -168,6 +168,17 @@ export default function App() {
     loadKeyCount().then(count => setApiKeyAvailable(count > 0));
     loadCredits().then(setCreditStatus).catch(err => console.warn('[credits] Could not load the balance:', err));
   }, []);
+
+  // PayPal's script is fetched ahead of need: when the pointer reaches a credits button, or as soon as the
+  // balance is down to its last credit. Visitors who never buy never download it.
+  const paypalClientId = creditStatus?.paypal?.clientId;
+  const warmPayPal = () => { if (paypalClientId) loadPayPalSdk(paypalClientId).catch(() => {}); };
+  const lowOnCredits = creditStatus !== null && creditStatus.credits <= 1;
+  useEffect(() => {
+    if (!paypalClientId || !lowOnCredits) return;
+    const timer = window.setTimeout(() => loadPayPalSdk(paypalClientId).catch(() => {}), 2000);
+    return () => window.clearTimeout(timer);
+  }, [paypalClientId, lowOnCredits]);
 
   // The assistant's payment tools (lib/paymentAgent.ts): a new balance to show, or a PayPal order to approve
   useEffect(() => {
@@ -518,6 +529,7 @@ export default function App() {
             apiKeyAvailable={apiKeyAvailable}
             credits={creditStatus?.credits ?? null}
             onOpenCredits={() => { setMenuOpen(false); setCreditsOpen({ reason: 'browse' }); }}
+            onWarmCredits={warmPayPal}
             error={error}
             library={library}
             onSave={handleSave}
@@ -548,6 +560,8 @@ export default function App() {
             {apiKeyAvailable && creditStatus && (
               <button
                 onClick={() => setCreditsOpen({ reason: 'browse' })}
+                onPointerEnter={warmPayPal}
+                onFocus={warmPayPal}
                 className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] font-medium text-amber-200 border border-amber-300/25 bg-amber-400/[0.08] hover:bg-amber-400/[0.15]"
                 aria-label={`${creditStatus.credits} credits. Get more`}
               >
