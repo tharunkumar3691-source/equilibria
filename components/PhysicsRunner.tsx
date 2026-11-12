@@ -63,7 +63,8 @@ const RELEASE_MAX_SPEED = 12;   // units/s kept on release, so a flick tosses ge
 // Camera zoom
 const ZOOM_STEP = 0.8;          // Each press of + moves the camera to 80% of its distance
 const ZOOM_MIN_DISTANCE = 3;
-const ZOOM_MAX_DISTANCE = 220;
+const ZOOM_MAX_DISTANCE = 3000;   // Far enough to see a whole scene as a speck; fog and clipping follow the camera out
+const FRAMING_MAX_DISTANCE = 220; // The opening shot never starts further away than this
 
 const SPEED_MIN = 0.1;
 const SPEED_MAX = 3;
@@ -1283,7 +1284,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
             const target = controlsRef.current.target;
             const points = shotPoints(target, objectsRef.current.map(o => o.body), generatedMeshesRef.current, sceneRef.current);
             const viewWidth = rendererRef.current ? rendererRef.current.domElement.clientWidth : 960;
-            fitWholeScene(cameraRef.current, target, sceneBox(generatedMeshesRef.current, points), ZOOM_MAX_DISTANCE, viewWidth || 960);
+            fitWholeScene(cameraRef.current, target, sceneBox(generatedMeshesRef.current, points), FRAMING_MAX_DISTANCE, viewWidth || 960);
         }
     }
     simAudio.setAmbience(ambienceRef.current);
@@ -1876,7 +1877,37 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         dirLight.target.updateMatrixWorld();
     };
 
+    // Far zoom-out. The scene's own clipping planes and fog are made for its home view; as the camera
+    // pulls back further, the far plane moves out with it (and the near plane a little, to keep depth
+    // precise), and the fog is pushed back by the extra distance for the frame being drawn, so the
+    // scene stays as clear as at its home view instead of fading into the background.
+    let sceneNear = camera.near, sceneFar = camera.far;
+    const fitClipping = () => {
+        const distance = camera.position.distanceTo(controls.target);
+        const far = Math.max(sceneFar, distance * 4);
+        const near = Math.max(sceneNear, distance / 1000);
+        if (Math.abs(camera.far - far) > far * 0.01 || Math.abs(camera.near - near) > near * 0.01) {
+            camera.far = far;
+            camera.near = near;
+            camera.updateProjectionMatrix();
+        }
+        return distance;
+    };
+
     const renderFrame = (fx: boolean, dt: number) => {
+        const distance = fitClipping();
+        const home = homeViewRef.current;
+        const beyond = home ? distance - home.position.distanceTo(home.target) : 0;
+        const fog = scene.fog;
+        let fogNear = 0, fogFar = 0, fogDensity = 0;
+        const fogShifted = !!fog && beyond > 1;
+        if (fog instanceof THREE.Fog && fogShifted) {
+            fogNear = fog.near; fogFar = fog.far;
+            fog.near += beyond; fog.far += beyond;
+        } else if (fog instanceof THREE.FogExp2 && fogShifted) {
+            fogDensity = fog.density;
+            fog.density *= (distance - beyond) / distance;
+        }
         const ambient = ambientLight.intensity;
         const setting = settingRef.current;
         scene.environment = ensureEnvironment();
@@ -1893,6 +1924,8 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         else renderer.render(scene, camera);
         if (fitted) restoreSun();
         ambientLight.intensity = ambient;
+        if (fog instanceof THREE.Fog && fogShifted) { fog.near = fogNear; fog.far = fogFar; }
+        else if (fog instanceof THREE.FogExp2 && fogShifted) fog.density = fogDensity;
     };
     const applyRenderMode = (level: number) => {
         if (level === fxActive) return;
@@ -1991,6 +2024,9 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     controls.update();
     homeViewRef.current = { position: camera.position.clone(), target: controls.target.clone() };
     zoomGoalRef.current = null;
+    // The clipping planes the scene's code chose: the least the far zoom-out ever uses
+    sceneNear = camera.near;
+    sceneFar = camera.far;
     // A scene just changed by the AI (or an undo) keeps the camera where the user had it; "reset view"
     // still goes to the scene's own view
     if (simulationData.keepView && lastView) {
