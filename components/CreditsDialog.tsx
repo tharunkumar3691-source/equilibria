@@ -82,7 +82,9 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
         onCancel: () => setMessage('Payment cancelled. Nothing was charged.'),
         onError: (error: any) => {
           console.error('[PayPal]', error);
-          setMessage(prev => prev || 'PayPal could not finish the payment. Please try again.');
+          // PayPal's own words help a tester see what went wrong (a sandbox login, a blocked window...)
+          const detail = String(error?.message || error || '').split('\n')[0].slice(0, 160);
+          setMessage(prev => prev || `PayPal could not finish the payment${detail ? ` (${detail})` : ''}. Please try again.`);
           setPhase('ready');
         },
       });
