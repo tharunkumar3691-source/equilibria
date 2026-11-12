@@ -93,6 +93,7 @@ export function createApi(env: Record<string, string | undefined>) {
       credits: device.credits,
       purchased: device.purchased,
       sponsored: device.sponsored || 0,
+      purchases: store.purchases(id),
       assistant: { used: store.assistantUsed(device), limit: store.assistantLimit },
       pool: {
         credits: pool.credits, donated: pool.donated, sponsors: pool.sponsors, used: pool.claimed || 0,
@@ -218,14 +219,14 @@ export function createApi(env: Record<string, string | undefined>) {
           if (!record || record.device !== id) { json(res, 404, { error: 'UNKNOWN_ORDER', message: 'That order was not started here.' }); return; }
           const purpose = record.purpose || 'self';
           // The webhook may have settled it already
-          if (record.status === 'credited') { json(res, 200, { added: record.credits, purpose, alreadyCredited: true, ...summary(id) }); return; }
+          if (record.status === 'credited') { json(res, 200, { added: record.credits, purpose, orderId, captureId: record.captureId, alreadyCredited: true, ...summary(id) }); return; }
           const result = await captureOrder(paypal, orderId);
           const outcome = settle(orderId, result);
           if (outcome.ok === false) {
             json(res, 402, { error: 'NOT_COMPLETED', message: `PayPal reports the payment as ${outcome.reason}; no credits were added.`, ...summary(id) });
             return;
           }
-          json(res, 200, { added: record.credits, purpose, captureId: result.captureId, ...summary(id) });
+          json(res, 200, { added: record.credits, purpose, orderId, captureId: result.captureId, ...summary(id) });
           return;
         }
       } catch (error) {

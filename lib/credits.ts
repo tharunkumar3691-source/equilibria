@@ -15,6 +15,7 @@ export interface CreditStatus {
   credits: number;
   purchased: number;
   sponsored: number;              // Credits this browser has given to the student pool
+  purchases?: Purchase[];         // This browser's PayPal payments, newest first
   assistant: { used: number; limit: number };
   pool: PoolStatus;               // The pay-it-forward pool for students who cannot pay
   freeCredits: number;
@@ -22,7 +23,11 @@ export interface CreditStatus {
   paypal: { clientId: string; environment: 'sandbox' } | null;
   ai: { keys: number };
 }
-export type Balance = Pick<CreditStatus, 'credits' | 'purchased' | 'sponsored' | 'assistant' | 'pool'>;
+// A paid PayPal order: the receipt, with PayPal's order and capture (transaction) ids
+export interface Purchase {
+  orderId: string; captureId: string; pack: string; credits: number; amount: string; currency: string; purpose: Purpose; paidAt: number;
+}
+export type Balance = Pick<CreditStatus, 'credits' | 'purchased' | 'sponsored' | 'assistant' | 'pool' | 'purchases'>;
 // A PayPal order made before the PayPal window opens (by the assistant), so the buttons pay exactly that order
 export interface PreparedOrder { id: string; pack: string; purpose: Purpose; credits: number; price: string }
 
@@ -68,7 +73,7 @@ export const claimFromPool = () => request<Balance & { claimed: number }>('/api/
 export const createPayPalOrder = (pack: string, purpose: Purpose = 'self') =>
   request<PreparedOrder>('/api/paypal/orders', { pack, purpose });
 export const capturePayPalOrder = (orderId: string) =>
-  request<Balance & { added: number; purpose: Purpose; captureId?: string; alreadyCredited?: boolean }>(`/api/paypal/orders/${encodeURIComponent(orderId)}/capture`, {});
+  request<Balance & { added: number; purpose: Purpose; orderId?: string; captureId?: string; alreadyCredited?: boolean }>(`/api/paypal/orders/${encodeURIComponent(orderId)}/capture`, {});
 
 // PayPal's JavaScript SDK, loaded once, only when someone opens the checkout
 let sdk: Promise<any> | null = null;

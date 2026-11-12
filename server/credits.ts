@@ -38,6 +38,10 @@ export interface OrderRecord {
   creditedAt?: number;
   captureId?: string;
 }
+// A paid order as its buyer sees it: a receipt
+export interface Purchase {
+  orderId: string; captureId: string; pack: string; credits: number; amount: string; currency: string; purpose: Purpose; paidAt: number;
+}
 interface Store {
   devices: Record<string, Device>;
   orders: Record<string, OrderRecord>;
@@ -226,6 +230,17 @@ export function createCreditStore(options: CreditOptions = {}) {
     saveNow();
     return { claimed: amount };
   }
+  // This device's paid orders, newest first: the receipts the credits window lists, with PayPal's own ids
+  function purchases(deviceId: string, limit = 10): Purchase[] {
+    return Object.entries(store.orders)
+      .filter(([, o]) => o.device === deviceId && o.status === 'credited')
+      .sort(([, a], [, b]) => (b.creditedAt || 0) - (a.creditedAt || 0))
+      .slice(0, limit)
+      .map(([orderId, o]) => ({
+        orderId, captureId: o.captureId || '', pack: packById(o.pack)?.label || o.pack, credits: o.credits,
+        amount: o.amount, currency: 'USD', purpose: o.purpose || 'self', paidAt: o.creditedAt || o.createdAt,
+      }));
+  }
   const pool = () => ({ ...store.pool });
   const poolClaimLeft = (d: Device) => Math.max(0, poolClaim - fresh(d.claims, { day: today(), count: 0 }).count);
 
@@ -236,7 +251,7 @@ export function createCreditStore(options: CreditOptions = {}) {
   }, 60 * 1000).unref();
 
   return {
-    device, spend, finish, authorizeCall, recordOrder, order, creditOrder, claimFromPool, pool, poolClaimLeft, poolPerDay: poolClaim,
+    device, spend, finish, authorizeCall, recordOrder, order, creditOrder, claimFromPool, pool, poolClaimLeft, poolPerDay: poolClaim, purchases,
     assistantUsed, assistantLimit, freeCredits, flush,
   };
 }

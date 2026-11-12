@@ -1,11 +1,52 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Coins, X, Check, ShieldCheck, RotateCcw, Sparkles, AlertCircle, HeartHandshake, Gift, GraduationCap, Zap, Lock, ArrowRight, Users, CreditCard
+  Coins, X, Check, ShieldCheck, RotateCcw, Sparkles, AlertCircle, HeartHandshake, Gift, GraduationCap, Zap, Lock, ArrowRight, Users, CreditCard, Copy, Receipt as ReceiptIcon, ChevronDown
 } from 'lucide-react';
 import { CardWindow } from './CardWindow';
 import {
-  Balance, capturePayPalOrder, claimFromPool, createPayPalOrder, CreditError, CreditStatus, loadPayPalSdk, PreparedOrder, Purpose
+  Balance, capturePayPalOrder, claimFromPool, createPayPalOrder, CreditError, CreditStatus, loadPayPalSdk, PreparedOrder, Purchase, Purpose
 } from '../lib/credits';
+
+const paidOn = (at: number) => new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+// A PayPal id that can be copied with one click (a tester can look it up in the PayPal sandbox dashboard)
+const PayPalId: React.FC<{ label: string; value: string }> = ({ label, value }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(value).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); }).catch(() => {});
+  };
+  return (
+    <div className="flex items-center justify-between gap-3 py-2 border-t border-white/[0.06] first:border-t-0">
+      <span className="text-[12.5px] text-slate-400 shrink-0">{label}</span>
+      <button onClick={copy} className="min-w-0 inline-flex items-center gap-1.5 font-mono text-[12.5px] text-slate-100 hover:text-white" title={`Copy ${label.toLowerCase()}`}>
+        <span className="truncate">{value}</span>
+        {copied ? <Check className="w-3.5 h-3.5 shrink-0 text-emerald-300" /> : <Copy className="w-3.5 h-3.5 shrink-0 text-slate-500" />}
+      </button>
+    </div>
+  );
+};
+
+// The receipt shown once a payment is captured
+const Receipt: React.FC<{ purchase: Purchase }> = ({ purchase }) => (
+  <div className="mt-6 mx-auto max-w-[420px] text-left rounded-2xl border border-white/[0.09] bg-slate-950/50 overflow-hidden">
+    <div className="flex items-center justify-between gap-3 px-4 py-3 bg-white/[0.03] border-b border-white/[0.07]">
+      <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-100"><ReceiptIcon className="w-4 h-4 text-amber-200" /> PayPal receipt</span>
+      <span className="text-[11.5px] px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-200 border border-emerald-300/20">Completed</span>
+    </div>
+    <div className="px-4 py-2">
+      <div className="flex items-center justify-between gap-3 py-2">
+        <span className="text-[13.5px] text-slate-200">{purchase.purpose === 'pool' ? `Gift to students · ${purchase.credits} credits` : `${purchase.pack} · ${purchase.credits} credits`}</span>
+        <span className="text-[15px] font-semibold text-white tabular-nums">${purchase.amount} {purchase.currency}</span>
+      </div>
+      <PayPalId label="Transaction ID" value={purchase.captureId} />
+      <PayPalId label="Order ID" value={purchase.orderId} />
+      <div className="flex items-center justify-between gap-3 py-2 border-t border-white/[0.06]">
+        <span className="text-[12.5px] text-slate-400">Paid</span>
+        <span className="text-[12.5px] text-slate-200">{paidOn(purchase.paidAt)} · PayPal sandbox</span>
+      </div>
+    </div>
+  </div>
+);
 
 export interface CreditsRequest {
   reason: 'browse' | 'empty';      // Opened from the balance, or because a generation needed a credit
@@ -99,7 +140,8 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const [packId, setPackId] = useState(request.order?.pack ?? request.pack ?? status?.packs[0]?.id ?? 'starter');
   const [phase, setPhase] = useState<'loading' | 'ready' | 'paying' | 'done' | 'unavailable'>('loading');
   const [message, setMessage] = useState<string | null>(null);
-  const [result, setResult] = useState<{ added: number; purpose: Purpose } | null>(null);
+  const [result, setResult] = useState<{ added: number; purpose: Purpose; receipt?: Purchase } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const holder = useRef<HTMLDivElement>(null);
   // The assistant's order is used once, and only while the same pack and purpose are chosen
@@ -127,7 +169,12 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
     setPhase('paying');
     try {
       const paid = await capturePayPalOrder(orderId);
-      setResult({ added: paid.added || 0, purpose: paid.purpose });
+      // The receipt: the server's record of this order, else what the capture just said
+      const receipt = paid.purchases?.find(p => p.orderId === orderId) ?? (paid.captureId ? {
+        orderId, captureId: paid.captureId, pack: pack?.label ?? '', credits: paid.added || 0, amount: pack?.price ?? '',
+        currency: 'USD', purpose: paid.purpose, paidAt: Date.now(),
+      } : undefined);
+      setResult({ added: paid.added || 0, purpose: paid.purpose, receipt });
       setCardOpen(false);
       setPhase('done');
       onPaid(paid, paid.added || 0, paid.purpose);
@@ -231,6 +278,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   const studentDays = (n: number) => Math.max(1, Math.floor(n / perDay));
   const canClaim = !!pool && credits === 0 && pool.credits > 0 && pool.claimable > 0;
   const packs = status?.packs ?? [];
+  const purchases = status?.purchases ?? [];
   const pack = packs.find(p => p.id === packId);
   const sponsoring = purpose === 'pool';
   const look = lookOf(packId, sponsoring);
@@ -306,6 +354,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                 ? <>The student pool now holds <b className="text-slate-50 tabular-nums">{plural(poolCredits, 'credit', 'credits')}</b>: a free day of physics for about <b className="text-slate-50 tabular-nums">{plural(studentDays(poolCredits), 'student', 'students')}</b>.</>
                 : <>Your balance is now <b className="text-slate-50 tabular-nums">{plural(credits, 'credit', 'credits')}</b>.</>}
             </p>
+            {result.receipt && <Receipt purchase={result.receipt} />}
             <button
               onClick={onClose}
               className="mt-7 inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-white text-[16px] font-semibold shadow-calm hover:brightness-110"
@@ -510,6 +559,33 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                 <ShieldCheck className="w-3.5 h-3.5" /> Sandbox: no real money
               </span>
             </div>
+
+            {/* Past payments: each with PayPal's own transaction and order ids */}
+            {purchases.length > 0 && (
+              <div className="rounded-2xl border border-white/[0.07] bg-slate-950/40">
+                <button
+                  onClick={() => setHistoryOpen(open => !open)}
+                  aria-expanded={historyOpen}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-[14px] text-slate-200 hover:text-white"
+                >
+                  <span className="inline-flex items-center gap-2"><ReceiptIcon className="w-4 h-4 text-amber-200" /> Your PayPal payments <span className="text-slate-400 tabular-nums">({purchases.length})</span></span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {historyOpen && (
+                  <ul className="px-4 pb-3 space-y-2">
+                    {purchases.map(p => (
+                      <li key={p.orderId} className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-1.5">
+                        <div className="flex items-center justify-between gap-3 py-1.5">
+                          <span className="text-[13px] text-slate-100">{p.purpose === 'pool' ? `Gift · ${p.credits} credits` : `${p.pack} · ${p.credits} credits`}<span className="block text-[11.5px] text-slate-400">{paidOn(p.paidAt)}</span></span>
+                          <span className="text-[14px] font-semibold text-white tabular-nums">${p.amount}</span>
+                        </div>
+                        {p.captureId && <PayPalId label="Transaction ID" value={p.captureId} />}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             {/* For yourself: a quiet invitation to gift, with what others have given */}
             {!sponsoring && !canClaim && (
