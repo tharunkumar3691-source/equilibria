@@ -69,7 +69,12 @@ export function loadPayPalSdk(clientId: string): Promise<any> {
   if ((window as any).paypal) return Promise.resolve((window as any).paypal);
   sdk ??= new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    const params = new URLSearchParams({ 'client-id': clientId, currency: 'USD', intent: 'capture', components: 'buttons' });
+    // buyer-country (sandbox only, as this app is): PayPal's checkout otherwise guesses the country from the
+    // visitor's address, and in some countries (India, for one) its card form then asks for a local phone
+    // number and an SMS code, which sandbox test cards cannot pass. Testers anywhere get the same checkout.
+    const params = new URLSearchParams({ 'client-id': clientId, currency: 'USD', intent: 'capture', components: 'buttons', 'buyer-country': 'US',
+      // Pay Later (instalments) has no place in a $2 purchase of credits
+      'disable-funding': 'paylater' });
     script.src = `https://www.paypal.com/sdk/js?${params}`;
     script.async = true;
     script.onload = () => ((window as any).paypal ? resolve((window as any).paypal) : reject(new Error('PayPal did not load.')));
