@@ -189,7 +189,7 @@ export const Landing: React.FC<{ onEnter: () => void; leaving: boolean }> = ({ o
           <div className="reveal">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#8a5cf6]/40 bg-[#8a5cf6]/10 px-3 py-1 text-[12px] text-[#d4c4ff]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#86efac] landing-pulse" />
-              Built for the PayPal AI Hackathon
+              Interactive 3D physics for students
             </div>
             <h1 className="font-display mt-6 text-[44px] leading-[1.04] sm:text-6xl lg:text-[68px] font-medium text-[#ffffff] tracking-tight">
               Physics,<br /><span className="landing-gradient-text">gently revealed.</span>
