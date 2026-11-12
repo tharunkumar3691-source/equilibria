@@ -380,8 +380,10 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       realisticRef.current = on;
       setRealisticEnabledState(on);
       try { localStorage.setItem('simulaitor.realistic', on ? '1' : '0'); } catch {}
+      // Realistic view always sits on the default backdrop; the picked one comes back when it is off
+      clearSetting();
+      if (themeControllerRef.current) themeControllerRef.current.apply(on ? DEFAULT_SCENE_THEME : themeRef.current);
       if (!on) {
-          clearSetting();
           syncLightingRef.current();
           setToast('Standard view');
           return;
@@ -776,14 +778,15 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
   };
 
   // --- BACKDROP ---
-  // Changes the backdrop under the Realistic setting: it comes off first and goes back on top after
+  // The pick is remembered, but Realistic view always keeps the default backdrop: it shows once Realistic is off
   const changeTheme = (id: ThemeId) => {
       themeRef.current = id;
       setTheme(id);
-      const had = !!settingRef.current;
-      clearSetting();
+      if (realisticRef.current) {
+          setToast(`Realistic view keeps the ${THEMES.find(t => t.id === DEFAULT_SCENE_THEME)?.label} backdrop`);
+          return;
+      }
       if (themeControllerRef.current) themeControllerRef.current.apply(id);
-      if (had) buildSetting();
       syncLighting();
   };
 
@@ -1329,7 +1332,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
     // The freshly built scene's look is its 'original'; the chosen environment theme goes on top
     if (themeControllerRef.current) {
         themeControllerRef.current.capture();
-        themeControllerRef.current.apply(themeRef.current);
+        themeControllerRef.current.apply(realisticRef.current ? DEFAULT_SCENE_THEME : themeRef.current);
     }
     syncLightingRef.current();
 
@@ -2962,7 +2965,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                                       <span className="text-slate-200 font-medium">Backdrop</span>
                                       <span className="text-[11px] text-slate-400">{THEMES.find(t => t.id === theme)?.label}</span>
                                   </div>
-                                  <div className="grid grid-cols-6 gap-1">
+                                  <div className={`grid grid-cols-6 gap-1 ${realisticEnabled ? 'opacity-50' : ''}`}>
                                       {THEMES.map(t => (
                                           <button
                                               key={t.id}
@@ -2975,6 +2978,9 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                                           ></button>
                                       ))}
                                   </div>
+                                  {realisticEnabled && (
+                                      <div className="text-[11px] leading-snug text-slate-400">Realistic view always uses the {THEMES.find(t => t.id === DEFAULT_SCENE_THEME)?.label} backdrop. Your pick shows when Realistic is off.</div>
+                                  )}
                               </div>
                               <div className="space-y-1.5">
                                   <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
