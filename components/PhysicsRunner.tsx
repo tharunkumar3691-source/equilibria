@@ -2981,7 +2981,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                               {/* Environment theme: backdrop and lighting only; the scene's objects stay as they are */}
                               <div className="space-y-1.5 pb-3 border-b border-white/5">
                                   <div className="text-[12px] leading-tight text-slate-200 font-medium">Environment</div>
-                                  <div className="grid grid-cols-5 gap-1.5">
+                                  <div className="grid grid-cols-5 gap-1">
                                       {THEMES.map(t => (
                                           <button
                                               key={t.id}
@@ -2989,16 +2989,12 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
                                               title={t.id === 'original' ? "The scene's own look" : `${t.label} backdrop and lighting`}
                                               aria-label={`${t.label} environment`}
                                               aria-pressed={theme === t.id}
-                                              className="flex flex-col items-center gap-1 group"
-                                          >
-                                              <span
-                                                  className={`block w-full h-9 rounded-md border transition-all ${theme === t.id ? 'border-violet-300 ring-2 ring-violet-400/70' : 'border-white/15 group-hover:border-white/45'}`}
-                                                  style={{ background: t.swatch }}
-                                              ></span>
-                                              <span className={`text-[10px] leading-none ${theme === t.id ? 'text-violet-200 font-medium' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.label}</span>
-                                          </button>
+                                              className={`h-7 rounded-md border transition-transform ${theme === t.id ? 'border-sky-300 ring-1 ring-sky-300 scale-105' : 'border-white/15 hover:border-white/40'}`}
+                                              style={{ background: t.swatch }}
+                                          ></button>
                                       ))}
                                   </div>
+                                  <div className="text-[11px] text-slate-400">{THEMES.find(t => t.id === theme)?.label}</div>
                               </div>
                               <div className="space-y-1.5">
                                   <div className="flex justify-between gap-2 text-[12px] leading-tight text-slate-300">
