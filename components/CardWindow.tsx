@@ -176,7 +176,7 @@ export const CardWindow: React.FC<CardWindowProps> = ({ paypal, price, credits, 
                 Loading the secure card form…
               </div>
             )}
-            <div style={{ colorScheme: 'light' }} className={mode === 'buttons' || mode === 'failed' ? 'hidden' : 'rounded-2xl bg-white p-4 sm:p-5 space-y-2'}>
+            <div style={{ colorScheme: 'light' }} className={mode === 'buttons' || mode === 'failed' ? 'hidden' : 'rounded-2xl bg-[#ffffff] p-4 sm:p-5 space-y-2'}>
               <div>
                 <span className="block px-1 text-[13px] font-semibold text-slate-600">Name on card</span>
                 <div ref={nameField} className="-mx-1"></div>
@@ -196,7 +196,7 @@ export const CardWindow: React.FC<CardWindowProps> = ({ paypal, price, credits, 
                 </div>
               </div>
             </div>
-            <div ref={fallback} style={{ colorScheme: 'light' }} className={mode === 'buttons' ? 'rounded-2xl bg-[#140f24] border border-white/[0.08] p-2.5' : 'hidden'}></div>
+            <div ref={fallback} style={{ colorScheme: 'light' }} className={mode === 'buttons' ? 'rounded-2xl bg-[var(--panel-solid)] border border-white/[0.08] p-2.5' : 'hidden'}></div>
           </div>
 
           {/* A tester needs PayPal's sandbox card, not a real one */}

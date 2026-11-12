@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Video, Info, Sparkles, HelpCircle, X, PenLine, Wand2, BookMarked, Save, Link2, Download, FolderOpen, Trash2, Play, ThumbsUp, ThumbsDown, Gem, BookOpen, Compass, NotebookPen, ImagePlus, Sigma, Coins } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Palette, Check } from 'lucide-react';
 import { LogoMark } from './Logo';
+import { THEMES, ThemeId, applyTheme, savedTheme } from '../lib/theme';
 import { LibraryEntry, SimulationData } from '../types';
 import { DemoScenario } from '../lib/demos';
 import { MAX_PROMPT_LENGTH } from '../lib/gemini';
@@ -80,7 +83,7 @@ interface MenuItem {
   badge?: number | string;      // A count shown on the icon
   dot?: 'busy' | 'new' | 'alert';
   tour?: string;                // Target of the guided tour
-  onSelect: () => void;
+  onSelect: (e: React.MouseEvent<HTMLButtonElement>) => void;
   active?: boolean;
   onPointerEnter?: () => void;
 }
@@ -106,7 +109,7 @@ const MenuButton: React.FC<{ item: MenuItem }> = ({ item }) => {
       {item.active && <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-[3px] rounded-r-full" style={{ background: item.accent }} aria-hidden="true"></span>}
       <span
         className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 ${item.active ? 'shadow-calm' : 'group-hover:scale-105'}`}
-        style={item.active ? { background: `linear-gradient(140deg, ${item.accent}55, ${item.accent}22)`, color: '#f4f7f6', boxShadow: `0 6px 18px -8px ${item.accent}` } : { color: item.accent }}
+        style={item.active ? { background: `linear-gradient(140deg, ${item.accent}55, ${item.accent}22)`, color: 'var(--color-slate-50)', boxShadow: `0 6px 18px -8px ${item.accent}` } : { color: item.accent }}
       >
         <Icon className="w-[19px] h-[19px]" />
         {item.badge !== undefined && (
@@ -118,6 +121,51 @@ const MenuButton: React.FC<{ item: MenuItem }> = ({ item }) => {
       </span>
       <span className="max-w-full truncate">{item.label}</span>
     </button>
+  );
+};
+
+// The colour themes, in a small panel beside the menu bar's Theme button
+const ThemePicker: React.FC<{ anchor: DOMRect; value: ThemeId; onPick: (id: ThemeId) => void; onClose: () => void }> = ({ anchor, value, onPick, onClose }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  const width = 300, margin = 8;
+  const left = anchor.right + 10 + width <= window.innerWidth - margin ? anchor.right + 10 : Math.max(margin, window.innerWidth - width - margin);
+  const bottom = Math.max(margin, window.innerHeight - anchor.bottom);
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[140]" onClick={onClose} aria-hidden="true"></div>
+      <div
+        className="fixed z-[141] rounded-2xl border border-white/10 bg-slate-900 p-3 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.6)] credits-rise"
+        style={{ left, bottom, width }}
+        role="dialog"
+        aria-label="Colour theme"
+      >
+        <p className="px-1 pb-2 text-[13px] font-semibold text-slate-100">Theme</p>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Colour theme">
+          {THEMES.map(t => {
+            const chosen = t.id === value;
+            return (
+              <button
+                key={t.id}
+                role="radio"
+                aria-checked={chosen}
+                onClick={() => onPick(t.id)}
+                className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left text-[13px] font-medium transition-colors ${chosen ? 'border-blue-400/70 bg-blue-500/15 text-slate-50' : 'border-white/[0.08] text-slate-300 hover:text-slate-50 hover:bg-white/[0.05]'}`}
+              >
+                <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full border border-black/20 shadow-sm" style={{ background: `linear-gradient(135deg, ${t.swatch[0]} 50%, ${t.swatch[1]} 50%)` }} aria-hidden="true">
+                  {chosen && <Check className="absolute inset-0 m-auto h-4 w-4" style={{ color: t.light ? '#12151a' : '#ffffff' }} strokeWidth={3} />}
+                </span>
+                <span className="min-w-0 truncate">{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>,
+    document.body,
   );
 };
 
@@ -172,6 +220,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return saved === 'about' && !simulationData ? 'create' : saved;
   });
   const [unseen, setUnseen] = useState(false); // A new scene arrived while another section was shown
+  const [theme, setTheme] = useState<ThemeId>(savedTheme);
+  const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null); // Where the theme picker opens from
+  const pickTheme = (id: ThemeId) => { applyTheme(id); setTheme(id); };
 
   const show = (next: Section) => {
     setSection(next);
@@ -212,6 +263,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       hint: credits > 0 ? `${credits} ${credits === 1 ? 'credit' : 'credits'} left. Buy more, or gift some to students, with PayPal.` : 'No credits left: get more with PayPal',
       onSelect: onOpenCredits, onPointerEnter: onWarmCredits });
   }
+  const themeNow = THEMES.find(t => t.id === theme) ?? THEMES[2];
+  actions.push({ id: 'theme', label: 'Theme', icon: Palette, accent: themeNow.swatch[1], active: !!themeAnchor,
+    hint: `Colour theme: ${themeNow.label}`,
+    onSelect: (e) => { const r = e.currentTarget.getBoundingClientRect(); setThemeAnchor(a => (a ? null : r)); } });
   actions.push({ id: 'help', label: 'Help', icon: HelpCircle, accent: '#b3bbf6',
     hint: 'Shortcuts, tour and help ( ? )', onSelect: onOpenHelp });
   const current = sections.find(s => s.active) ?? sections[0];
@@ -315,6 +370,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <span className="w-8 h-px bg-white/10 mb-1" aria-hidden="true"></span>
         {actions.map(item => <MenuButton key={item.id} item={item} />)}
       </nav>
+      {themeAnchor && <ThemePicker anchor={themeAnchor} value={theme} onPick={pickTheme} onClose={() => setThemeAnchor(null)} />}
 
       {/* The chosen section */}
       <div className="flex-1 min-w-0 h-full flex flex-col gap-3 overflow-y-auto overscroll-contain pr-0.5">

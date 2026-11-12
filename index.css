@@ -63,10 +63,19 @@
   input::placeholder, textarea::placeholder { color: var(--color-gray-400); }
   button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
 
-  :root { color-scheme: dark; }
+  /* The page's own colours, for the default (purple) theme; the other themes, at the end of this file,
+     replace them */
+  :root {
+    color-scheme: dark;
+    --app-bg: #0d0a18; --app-text: #ebe7f5; --panel-solid: #140f24;
+    --glass-bg: rgba(24, 18, 44, 0.62); --glass-border: rgba(196, 170, 255, 0.08);
+    --glow-1: rgba(138, 92, 246, 0.2); --glow-2: rgba(185, 100, 211, 0.13); --glow-3: rgba(91, 95, 196, 0.12);
+    --focus: rgba(185, 160, 255, 0.75); --selection: rgba(138, 92, 246, 0.4);
+  }
   body {
-    background-color: #0d0a18;
-    color: #ebe7f5;
+    background-color: var(--app-bg);
+    color: var(--app-text);
+    transition: background-color 400ms ease, color 400ms ease;
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
   }
@@ -75,8 +84,8 @@
   button, a, input, textarea, select { transition-duration: 200ms; transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1); }
 
   /* Clear, soft focus for keyboard users */
-  :focus-visible { outline: 2px solid rgba(185, 160, 255, 0.75); outline-offset: 2px; border-radius: 8px; }
-  ::selection { background: rgba(138, 92, 246, 0.4); color: #f6f4fb; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 8px; }
+  ::selection { background: var(--selection); color: var(--color-slate-50); }
 
   /* Quiet scrollbars */
   * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.1) transparent; }
@@ -96,9 +105,9 @@
      about four breaths a minute, the pace of a resting breath */
   .bg-grid-pattern {
     background:
-      radial-gradient(1100px 620px at 12% -12%, rgba(138, 92, 246, 0.2), transparent 62%),
-      radial-gradient(900px 520px at 100% 4%, rgba(185, 100, 211, 0.13), transparent 60%),
-      radial-gradient(1100px 700px at 55% 125%, rgba(91, 95, 196, 0.12), transparent 62%);
+      radial-gradient(1100px 620px at 12% -12%, var(--glow-1), transparent 62%),
+      radial-gradient(900px 520px at 100% 4%, var(--glow-2), transparent 60%),
+      radial-gradient(1100px 700px at 55% 125%, var(--glow-3), transparent 62%);
     animation: breathe 16s ease-in-out infinite;
   }
   /* While a simulation runs, the backdrop holds still: no work for the page beyond the scene itself */
@@ -106,10 +115,10 @@
 
   /* Frosted surfaces */
   .glass {
-    background: rgba(24, 18, 44, 0.62);
+    background: var(--glass-bg);
     backdrop-filter: blur(14px) saturate(120%);
     -webkit-backdrop-filter: blur(14px) saturate(120%);
-    border: 1px solid rgba(196, 170, 255, 0.08);
+    border: 1px solid var(--glass-border);
     box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.55);
   }
 
@@ -137,4 +146,82 @@
 @keyframes breathe {
   0%, 100% { opacity: 0.75; }
   50% { opacity: 1; }
+}
+
+/* Themes. Purple is the default (the palette above). Each other theme replaces the palette; a light
+   theme flips every scale, so the components' "bright text on dark" reads as dark text on light, and
+   white and black trade places for the same reason. Written by a script: see the palette rules above. */
+:root[data-theme="dark"] {
+  --color-slate-50: #f5f6f7; --color-slate-100: #e8eaed; --color-slate-200: #d0d4d9; --color-slate-300: #b0b6be; --color-slate-400: #8d949e; --color-slate-500: #6c737d; --color-slate-600: #535962; --color-slate-700: #3c4148; --color-slate-800: #282c31; --color-slate-900: #1b1e22; --color-slate-950: #121417;
+  --color-blue-50: #eef6ff; --color-blue-100: #d9ebff; --color-blue-200: #b8d9ff; --color-blue-300: #8cc2ff; --color-blue-400: #5fa6fb; --color-blue-500: #3d8bf0; --color-blue-600: #2f72d6; --color-blue-700: #285db0; --color-blue-800: #224b8c; --color-blue-900: #1d3d70; --color-blue-950: #122546;
+  --color-science-950: #0b0c0e; --color-science-900: #16181c; --color-science-800: #282c31; --color-science-500: #3d8bf0; --color-science-100: #d9ebff;
+  --app-bg: #0b0c0e; --app-text: #e8eaed; --panel-solid: #16181c;
+  --glass-bg: rgba(22, 24, 28, 0.62); --glass-border: rgba(140, 194, 255, 0.08);
+  --glow-1: rgba(61, 139, 240, 0.12); --glow-2: rgba(141, 148, 158, 0.06); --glow-3: rgba(95, 166, 251, 0.07);
+  --focus: rgba(140, 194, 255, 0.75); --selection: rgba(61, 139, 240, 0.4);
+  color-scheme: dark;
+}
+:root[data-theme="orange"] {
+  --color-slate-50: #fbf6f2; --color-slate-100: #f3e9e1; --color-slate-200: #e3d2c4; --color-slate-300: #cbb3a0; --color-slate-400: #ad917b; --color-slate-500: #8c725e; --color-slate-600: #6d5747; --color-slate-700: #503f33; --color-slate-800: #372b23; --color-slate-900: #241c17; --color-slate-950: #18120e;
+  --color-blue-50: #fff4eb; --color-blue-100: #ffe6d1; --color-blue-200: #ffcca3; --color-blue-300: #ffab6b; --color-blue-400: #ff8f3f; --color-blue-500: #f5731f; --color-blue-600: #d95f14; --color-blue-700: #b44c11; --color-blue-800: #8c3c12; --color-blue-900: #6b3011; --color-blue-950: #3d1a08;
+  --color-science-950: #100b08; --color-science-900: #1d1511; --color-science-800: #372b23; --color-science-500: #f5731f; --color-science-100: #ffe6d1;
+  --app-bg: #100b08; --app-text: #f3e9e1; --panel-solid: #1d1511;
+  --glass-bg: rgba(29, 21, 17, 0.62); --glass-border: rgba(255, 171, 107, 0.08);
+  --glow-1: rgba(245, 115, 31, 0.18); --glow-2: rgba(217, 95, 20, 0.1); --glow-3: rgba(255, 171, 107, 0.08);
+  --focus: rgba(255, 171, 107, 0.75); --selection: rgba(245, 115, 31, 0.4);
+  color-scheme: dark;
+}
+:root[data-theme="white"] {
+  --color-slate-50: #12151a; --color-slate-100: #20242c; --color-slate-200: #333945; --color-slate-300: #4b5260; --color-slate-400: #6b7280; --color-slate-500: #8e96a3; --color-slate-600: #c3c9d2; --color-slate-700: #dde1e7; --color-slate-800: #eceef2; --color-slate-900: #f6f7f9; --color-slate-950: #ffffff;
+  --color-blue-50: #1e1b4b; --color-blue-100: #312e81; --color-blue-200: #3730a3; --color-blue-300: #4338ca; --color-blue-400: #4f46e5; --color-blue-500: #6366f1; --color-blue-600: #818cf8; --color-blue-700: #a5b4fc; --color-blue-800: #c7d2fe; --color-blue-900: #e0e7ff; --color-blue-950: #eef2ff;
+  --color-sky-50: #24112b; --color-sky-100: #3d1d48; --color-sky-200: #5b2b6b; --color-sky-300: #7a3a90; --color-sky-400: #9a4cb5; --color-sky-500: #b964d3; --color-sky-600: #d084e6; --color-sky-700: #e3aaf0; --color-sky-800: #efcdf6; --color-sky-900: #f7e6fb; --color-sky-950: #fbf2fd;
+  --color-cyan-50: #15162e; --color-cyan-100: #23244d; --color-cyan-200: #353774; --color-cyan-300: #474a9c; --color-cyan-400: #5b5fc4; --color-cyan-500: #7279e0; --color-cyan-600: #8f99ee; --color-cyan-700: #b3bbf6; --color-cyan-800: #d3d8fb; --color-cyan-900: #e4e7fd; --color-cyan-950: #f1f2fe;
+  --color-violet-50: #241231; --color-violet-100: #3b1f52; --color-violet-200: #582e7a; --color-violet-300: #753da3; --color-violet-400: #934fcb; --color-violet-500: #ae6ae3; --color-violet-600: #c88ef0; --color-violet-700: #dcb4f7; --color-violet-800: #ecd5fb; --color-violet-900: #f3e5fd; --color-violet-950: #f8f0fe;
+  --color-emerald-50: #152219; --color-emerald-100: #22382a; --color-emerald-200: #335a3c; --color-emerald-300: #43704e; --color-emerald-400: #548a61; --color-emerald-500: #6aa276; --color-emerald-600: #86bb90; --color-emerald-700: #a9d1b0; --color-emerald-800: #cfe5d2; --color-emerald-900: #e2f0e4; --color-emerald-950: #f0f7f1;
+  --color-amber-50: #241c10; --color-amber-100: #3d2f1a; --color-amber-200: #614826; --color-amber-300: #866434; --color-amber-400: #a87e43; --color-amber-500: #c99b57; --color-amber-600: #dcb676; --color-amber-700: #e8cc96; --color-amber-800: #f1dfb9; --color-amber-900: #f7eedb; --color-amber-950: #fbf6ec;
+  --color-yellow-50: #231e10; --color-yellow-100: #3b321a; --color-yellow-200: #5c4e29; --color-yellow-300: #7f6c39; --color-yellow-400: #a58d4c; --color-yellow-500: #c7ad66; --color-yellow-600: #dcc584; --color-yellow-700: #ead9a6; --color-yellow-800: #f3e7c4; --color-yellow-900: #f6efd6; --color-yellow-950: #faf6e8;
+  --color-red-50: #2a1615; --color-red-100: #4a2826; --color-red-200: #6b3936; --color-red-300: #8a4945; --color-red-400: #a95b56; --color-red-500: #c4716b; --color-red-600: #d78d86; --color-red-700: #e5aca6; --color-red-800: #f1cfcb; --color-red-900: #f8e6e4; --color-red-950: #fcf3f2;
+  --color-science-950: #f3f4f7; --color-science-900: #ffffff; --color-science-800: #eceef2; --color-science-500: #6366f1; --color-science-100: #312e81;
+  --color-white: #12151a; --color-black: #ffffff;
+  --app-bg: #f3f4f7; --app-text: #20242c; --panel-solid: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.78); --glass-border: rgba(18, 21, 26, 0.08);
+  --glow-1: rgba(99, 102, 241, 0.08); --glow-2: rgba(165, 180, 252, 0.08); --glow-3: rgba(195, 201, 210, 0.1);
+  --focus: rgba(79, 70, 229, 0.75); --selection: rgba(99, 102, 241, 0.25);
+  color-scheme: light;
+}
+:root[data-theme="green"] {
+  --color-slate-50: #111a14; --color-slate-100: #1d2a22; --color-slate-200: #2e3f34; --color-slate-300: #43594b; --color-slate-400: #5f7d69; --color-slate-500: #7f9f8a; --color-slate-600: #a9c8b4; --color-slate-700: #cfe3d6; --color-slate-800: #e3f0e7; --color-slate-900: #f1f8f3; --color-slate-950: #fbfefc;
+  --color-blue-50: #082818; --color-blue-100: #12462d; --color-blue-200: #155636; --color-blue-300: #156d41; --color-blue-400: #17894f; --color-blue-500: #22a862; --color-blue-600: #3fc27b; --color-blue-700: #6fdc9f; --color-blue-800: #a7f0c4; --color-blue-900: #d1fae0; --color-blue-950: #ecfdf3;
+  --color-sky-50: #24112b; --color-sky-100: #3d1d48; --color-sky-200: #5b2b6b; --color-sky-300: #7a3a90; --color-sky-400: #9a4cb5; --color-sky-500: #b964d3; --color-sky-600: #d084e6; --color-sky-700: #e3aaf0; --color-sky-800: #efcdf6; --color-sky-900: #f7e6fb; --color-sky-950: #fbf2fd;
+  --color-cyan-50: #15162e; --color-cyan-100: #23244d; --color-cyan-200: #353774; --color-cyan-300: #474a9c; --color-cyan-400: #5b5fc4; --color-cyan-500: #7279e0; --color-cyan-600: #8f99ee; --color-cyan-700: #b3bbf6; --color-cyan-800: #d3d8fb; --color-cyan-900: #e4e7fd; --color-cyan-950: #f1f2fe;
+  --color-violet-50: #241231; --color-violet-100: #3b1f52; --color-violet-200: #582e7a; --color-violet-300: #753da3; --color-violet-400: #934fcb; --color-violet-500: #ae6ae3; --color-violet-600: #c88ef0; --color-violet-700: #dcb4f7; --color-violet-800: #ecd5fb; --color-violet-900: #f3e5fd; --color-violet-950: #f8f0fe;
+  --color-emerald-50: #152219; --color-emerald-100: #22382a; --color-emerald-200: #335a3c; --color-emerald-300: #43704e; --color-emerald-400: #548a61; --color-emerald-500: #6aa276; --color-emerald-600: #86bb90; --color-emerald-700: #a9d1b0; --color-emerald-800: #cfe5d2; --color-emerald-900: #e2f0e4; --color-emerald-950: #f0f7f1;
+  --color-amber-50: #241c10; --color-amber-100: #3d2f1a; --color-amber-200: #614826; --color-amber-300: #866434; --color-amber-400: #a87e43; --color-amber-500: #c99b57; --color-amber-600: #dcb676; --color-amber-700: #e8cc96; --color-amber-800: #f1dfb9; --color-amber-900: #f7eedb; --color-amber-950: #fbf6ec;
+  --color-yellow-50: #231e10; --color-yellow-100: #3b321a; --color-yellow-200: #5c4e29; --color-yellow-300: #7f6c39; --color-yellow-400: #a58d4c; --color-yellow-500: #c7ad66; --color-yellow-600: #dcc584; --color-yellow-700: #ead9a6; --color-yellow-800: #f3e7c4; --color-yellow-900: #f6efd6; --color-yellow-950: #faf6e8;
+  --color-red-50: #2a1615; --color-red-100: #4a2826; --color-red-200: #6b3936; --color-red-300: #8a4945; --color-red-400: #a95b56; --color-red-500: #c4716b; --color-red-600: #d78d86; --color-red-700: #e5aca6; --color-red-800: #f1cfcb; --color-red-900: #f8e6e4; --color-red-950: #fcf3f2;
+  --color-science-950: #eaf6ee; --color-science-900: #f8fdf9; --color-science-800: #e3f0e7; --color-science-500: #22a862; --color-science-100: #12462d;
+  --color-white: #111a14; --color-black: #ffffff;
+  --app-bg: #eaf6ee; --app-text: #1d2a22; --panel-solid: #f8fdf9;
+  --glass-bg: rgba(248, 253, 249, 0.78); --glass-border: rgba(17, 26, 20, 0.08);
+  --glow-1: rgba(34, 168, 98, 0.12); --glow-2: rgba(111, 220, 159, 0.12); --glow-3: rgba(169, 200, 180, 0.1);
+  --focus: rgba(23, 137, 79, 0.75); --selection: rgba(34, 168, 98, 0.25);
+  color-scheme: light;
+}
+:root[data-theme="yellow"] {
+  --color-slate-50: #18150f; --color-slate-100: #29241a; --color-slate-200: #3f3827; --color-slate-300: #5c5239; --color-slate-400: #807350; --color-slate-500: #a9996a; --color-slate-600: #d6c690; --color-slate-700: #eee2b5; --color-slate-800: #f8f0d2; --color-slate-900: #fdf9ea; --color-slate-950: #fffef8;
+  --color-blue-50: #451a03; --color-blue-100: #78350f; --color-blue-200: #92400e; --color-blue-300: #b45309; --color-blue-400: #d97706; --color-blue-500: #f59e0b; --color-blue-600: #fbbf24; --color-blue-700: #fcd34d; --color-blue-800: #fde68a; --color-blue-900: #fef3c7; --color-blue-950: #fffbeb;
+  --color-sky-50: #24112b; --color-sky-100: #3d1d48; --color-sky-200: #5b2b6b; --color-sky-300: #7a3a90; --color-sky-400: #9a4cb5; --color-sky-500: #b964d3; --color-sky-600: #d084e6; --color-sky-700: #e3aaf0; --color-sky-800: #efcdf6; --color-sky-900: #f7e6fb; --color-sky-950: #fbf2fd;
+  --color-cyan-50: #15162e; --color-cyan-100: #23244d; --color-cyan-200: #353774; --color-cyan-300: #474a9c; --color-cyan-400: #5b5fc4; --color-cyan-500: #7279e0; --color-cyan-600: #8f99ee; --color-cyan-700: #b3bbf6; --color-cyan-800: #d3d8fb; --color-cyan-900: #e4e7fd; --color-cyan-950: #f1f2fe;
+  --color-violet-50: #241231; --color-violet-100: #3b1f52; --color-violet-200: #582e7a; --color-violet-300: #753da3; --color-violet-400: #934fcb; --color-violet-500: #ae6ae3; --color-violet-600: #c88ef0; --color-violet-700: #dcb4f7; --color-violet-800: #ecd5fb; --color-violet-900: #f3e5fd; --color-violet-950: #f8f0fe;
+  --color-emerald-50: #152219; --color-emerald-100: #22382a; --color-emerald-200: #335a3c; --color-emerald-300: #43704e; --color-emerald-400: #548a61; --color-emerald-500: #6aa276; --color-emerald-600: #86bb90; --color-emerald-700: #a9d1b0; --color-emerald-800: #cfe5d2; --color-emerald-900: #e2f0e4; --color-emerald-950: #f0f7f1;
+  --color-amber-50: #241c10; --color-amber-100: #3d2f1a; --color-amber-200: #614826; --color-amber-300: #866434; --color-amber-400: #a87e43; --color-amber-500: #c99b57; --color-amber-600: #dcb676; --color-amber-700: #e8cc96; --color-amber-800: #f1dfb9; --color-amber-900: #f7eedb; --color-amber-950: #fbf6ec;
+  --color-yellow-50: #231e10; --color-yellow-100: #3b321a; --color-yellow-200: #5c4e29; --color-yellow-300: #7f6c39; --color-yellow-400: #a58d4c; --color-yellow-500: #c7ad66; --color-yellow-600: #dcc584; --color-yellow-700: #ead9a6; --color-yellow-800: #f3e7c4; --color-yellow-900: #f6efd6; --color-yellow-950: #faf6e8;
+  --color-red-50: #2a1615; --color-red-100: #4a2826; --color-red-200: #6b3936; --color-red-300: #8a4945; --color-red-400: #a95b56; --color-red-500: #c4716b; --color-red-600: #d78d86; --color-red-700: #e5aca6; --color-red-800: #f1cfcb; --color-red-900: #f8e6e4; --color-red-950: #fcf3f2;
+  --color-science-950: #fbf5dc; --color-science-900: #fffdf3; --color-science-800: #f8f0d2; --color-science-500: #f59e0b; --color-science-100: #78350f;
+  --color-white: #18150f; --color-black: #ffffff;
+  --app-bg: #fbf5dc; --app-text: #29241a; --panel-solid: #fffdf3;
+  --glass-bg: rgba(255, 253, 243, 0.78); --glass-border: rgba(24, 21, 15, 0.08);
+  --glow-1: rgba(245, 158, 11, 0.14); --glow-2: rgba(252, 211, 77, 0.16); --glow-3: rgba(214, 198, 144, 0.12);
+  --focus: rgba(217, 119, 6, 0.75); --selection: rgba(245, 158, 11, 0.25);
+  color-scheme: light;
 }

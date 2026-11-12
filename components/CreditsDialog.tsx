@@ -33,6 +33,9 @@ const lookOf = (id: string, sponsoring: boolean) => {
   return sponsoring ? { ...base, ...SPONSOR_LOOK } : base;
 };
 
+// A pack's tint as text: blended toward the theme's strongest text colour, so it reads on dark and light themes
+const tinted = (hex: string) => `color-mix(in oklab, ${hex} 55%, var(--color-slate-50))`;
+
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 // A number that counts up to its value once (skipped when the visitor asks for less motion)
@@ -414,12 +417,12 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                       </span>
                     )}
                     <span className="flex items-center justify-between">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${pl.from}44`, color: pl.text }}><Icon className="w-5 h-5" /></span>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `${pl.from}44`, color: tinted(pl.text) }}><Icon className="w-5 h-5" /></span>
                       <span className={`flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors ${selected ? 'border-transparent' : 'border-white/25'}`} style={selected ? { background: pl.ring } : undefined}>
                         {selected && <Check className="w-3.5 h-3.5 text-slate-900" strokeWidth={3} />}
                       </span>
                     </span>
-                    <span className="mt-3 block text-[14px] font-semibold" style={{ color: pl.text }}>{sponsoring ? (p.id === 'class' ? 'Gift a class' : 'Small gift') : p.label}</span>
+                    <span className="mt-3 block text-[14px] font-semibold" style={{ color: tinted(pl.text) }}>{sponsoring ? (p.id === 'class' ? 'Gift a class' : 'Small gift') : p.label}</span>
                     <span className="block font-display text-[32px] sm:text-[38px] leading-tight text-slate-50 tabular-nums">
                       {p.credits}<span className="ml-1.5 text-[15px] sm:text-[16px] text-slate-300">credits</span>
                     </span>
@@ -441,7 +444,7 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                 <span className="text-[14px] sm:text-[15px] text-slate-200">
                   {sponsoring ? 'Student pool' : 'Your balance'} <span className="tabular-nums text-slate-400">{sponsoring ? poolCredits : credits}</span>
                   <ArrowRight className="inline w-4 h-4 mx-1.5 -mt-0.5 text-slate-500" />
-                  <span className="font-semibold tabular-nums" style={{ color: look.text }}>{(sponsoring ? poolCredits : credits) + pack.credits}</span>
+                  <span className="font-semibold tabular-nums" style={{ color: tinted(look.text) }}>{(sponsoring ? poolCredits : credits) + pack.credits}</span>
                   <span className="text-slate-400"> credits</span>
                 </span>
                 <span className="text-[16px] sm:text-[17px] font-semibold text-white tabular-nums">${pack.price}</span>
@@ -469,12 +472,12 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                 {/* Two ways to pay: PayPal's own button, and a card, which opens its own window. PayPal's
                     frame keeps a light colour scheme, as its page has, so the browser draws it transparent
                     over the dark panel instead of on a white box */}
-                <div className="rounded-2xl bg-[#140f24] border border-white/[0.08] p-3 space-y-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]">
+                <div className="rounded-2xl bg-[var(--panel-solid)] border border-white/[0.08] p-3 space-y-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]">
                   <div ref={holder} style={{ colorScheme: 'light' }} aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
                   <button
                     onClick={() => { setMessage(null); setCardOpen(true); }}
                     disabled={!sdk || phase !== 'ready'}
-                    className="w-full h-[50px] inline-flex items-center justify-center gap-2.5 rounded-full bg-[#2f2943] hover:bg-[#3d3556] border border-white/10 text-white text-[16px] font-semibold disabled:opacity-60"
+                    className="w-full h-[50px] inline-flex items-center justify-center gap-2.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-[16px] font-semibold disabled:opacity-60"
                   >
                     <CreditCard className="w-5 h-5" /> Debit or Credit Card
                   </button>
