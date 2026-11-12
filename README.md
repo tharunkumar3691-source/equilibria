@@ -94,7 +94,7 @@ free up to a daily number per visitor, and the whole server has a daily cap on G
 **Hosted demo:** see the Devpost submission for the link.
 
 **Judges / testers:**
-1. Every new visitor starts with **3 free credits**: try *Solve and simulate* or *Describe* straight away.
+1. Every new visitor starts with **5 free credits** on the hosted demo (3 by default when you run it yourself): try *Solve and simulate* or *Describe* straight away.
 2. To buy credits, click the credits badge in the *Create* panel (or ask the assistant
    "I need credits for my class"). Sign in to PayPal with the **sandbox buyer account** given in the
    submission's testing instructions. No real money moves.

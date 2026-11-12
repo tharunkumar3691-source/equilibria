@@ -15,6 +15,12 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "24"
+      # Free credits for each new visitor, and how many new visitors per network a day get them
+      # (generous so several judges on one office network can all try it)
+      - key: FREE_CREDITS
+        value: "5"
+      - key: FREE_STARTS_PER_IP
+        value: "20"
       - key: GEMINI_API_KEY
         sync: false
       # Backup key, used when the first runs out of quota (best from a second Google Cloud project)
