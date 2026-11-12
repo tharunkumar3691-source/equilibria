@@ -75,10 +75,19 @@ const withoutProvider = (text: string): string => text
   .replace(/\bGoogle( GenAI| AI)?\b/g, 'the AI service')
   .replace(/GEMINI_API_KEY/g, 'the AI key');
 
+// Raw service errors (JSON bodies, status codes) become one plain sentence people can act on
+const friendly = (text: string): string => {
+  if (/\b503\b|UNAVAILABLE|high demand|overloaded/i.test(text)) return 'Our scene designer is very busy right now. Please try again in a minute.';
+  if (/\b429\b|RESOURCE_EXHAUSTED|quota|rate limit/i.test(text)) return 'Our scene designer has reached its limit for now. Please try again in a few minutes, or open a demo meanwhile.';
+  if (/\b50[024]\b|INTERNAL|DEADLINE_EXCEEDED|timed? ?out|aborted/i.test(text)) return 'Building the scene took too long this time. Please try again.';
+  if (/^\s*[{[]/.test(text) || /"error"\s*:/.test(text)) return 'Something went wrong while building the scene. Please try again.';
+  return withoutProvider(text);
+};
+
 const errorText = (err: any): string => {
-  if (err instanceof Error) return withoutProvider(err.message);
-  if (typeof err === 'object' && err !== null) return withoutProvider(err.message || err.error?.message || JSON.stringify(err));
-  return withoutProvider(String(err));
+  if (err instanceof Error) return friendly(err.message);
+  if (typeof err === 'object' && err !== null) return friendly(err.message || err.error?.message || JSON.stringify(err));
+  return friendly(String(err));
 };
 
 // Step-by-step progress for a generation, driven by what the generator reports (not a timer)
