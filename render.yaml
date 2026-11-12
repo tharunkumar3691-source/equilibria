@@ -23,6 +23,9 @@ services:
         value: /var/data
       - key: GEMINI_API_KEY
         sync: false
+      # Backup key, used when the first runs out of quota (best from a second Google Cloud project)
+      - key: GEMINI_API_KEY_2
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
