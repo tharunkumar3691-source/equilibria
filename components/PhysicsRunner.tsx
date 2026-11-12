@@ -389,10 +389,12 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       try { localStorage.setItem('simulaitor.realistic', on ? '1' : '0'); } catch {}
       if (!on) {
           clearSetting();
+          syncLightingRef.current();
           setToast('Standard view');
           return;
       }
       const place = buildSetting();
+      syncLightingRef.current();
       setToast(place ? `Realistic: shown ${place}` : 'This scene already shows its own real setting');
   };
 
@@ -785,7 +787,17 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
       themeRef.current = id;
       setTheme(id);
       underSetting(() => { if (themeControllerRef.current) themeControllerRef.current.apply(id); });
+      syncLighting();
   };
+
+  // The lighting sliders show the lights as they now are (a backdrop brings its own sun and fill)
+  const syncLighting = () => {
+      const sun = dirLightRef.current, ambient = ambientLightRef.current;
+      if (!sun || !ambient) return;
+      setLightSettings(prev => ({ ...prev, intensity: Math.round(sun.intensity * 10) / 10, ambient: Math.round(ambient.intensity * 100) / 100 }));
+  };
+  const syncLightingRef = useRef(syncLighting);
+  syncLightingRef.current = syncLighting;
 
   // --- FULL SCREEN & CINEMATIC MODE ---
   const toggleFullscreen = () => {
@@ -870,6 +882,9 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
           );
           dirLightRef.current.updateMatrix();
       }
+      // Under the scene's own look, the change becomes part of that look, so switching to another backdrop
+      // and back keeps it
+      if (themeRef.current === 'original' && !settingRef.current && themeControllerRef.current) themeControllerRef.current.capture();
   };
   
   // A hand-picked background colour replaces the theme and becomes the scene's own look
@@ -1337,6 +1352,7 @@ export const PhysicsRunner: React.FC<PhysicsRunnerProps> = ({ simulationData, on
         themeControllerRef.current.capture();
         themeControllerRef.current.apply(themeRef.current);
     }
+    syncLightingRef.current();
 
     // --- BOUNDARIES ---
     // The main object (the thing the user launches or releases) must stay on the floor; see lib/bounds.ts.

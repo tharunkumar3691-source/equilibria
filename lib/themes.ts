@@ -79,6 +79,9 @@ function starField(count: number): THREE.Points {
   const points = new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, depthWrite: false, transparent: true, opacity: 0.85 }));
   points.frustumCulled = false;
   points.renderOrder = -1;
+  // Part of the sky, not the scene: clicks (picking, the ruler) go straight through it
+  points.raycast = () => {};
+  points.userData.backdrop = true;
   return points;
 }
 
@@ -93,6 +96,8 @@ export class ThemeController {
   private original: Snapshot;
   private extras: THREE.Object3D[] = [];
   private texture: THREE.Texture | null = null;
+  // The scene's own sky-fill lights (a ground's daylight), switched off under a theme that brings its own light
+  private quieted: { light: THREE.Light; was: number }[] = [];
   current: ThemeId = 'original';
 
   constructor(private scene: THREE.Scene, private ambient: THREE.AmbientLight, private sun: THREE.DirectionalLight) {
@@ -123,6 +128,8 @@ export class ThemeController {
   // Puts the scene's own look back (call before a scene is rebuilt)
   restore() {
     this.clearExtras();
+    this.quieted.forEach(q => { q.light.intensity = q.was; });
+    this.quieted = [];
     const o = this.original;
     this.scene.background = o.background;
     const fog = this.scene.fog as THREE.Fog | null;
@@ -151,6 +158,11 @@ export class ThemeController {
     this.ambient.intensity = spec.ambient[1];
     this.sun.color.set(spec.sun[0]);
     this.sun.intensity = spec.sun[1];
+    // A blue daylight fill from the scene's own ground would light up a night or space sky
+    this.scene.traverse(o => {
+      const light = o as THREE.HemisphereLight;
+      if (light.isHemisphereLight && light.intensity > 0) { this.quieted.push({ light, was: light.intensity }); light.intensity = 0; }
+    });
     if (spec.hemisphere) {
       const hemi = new THREE.HemisphereLight(spec.hemisphere[0], spec.hemisphere[1], spec.hemisphere[2]);
       this.scene.add(hemi);
