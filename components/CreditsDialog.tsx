@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Coins, X, Check, ShieldCheck, RotateCcw, Sparkles, AlertCircle, HeartHandshake, Gift, GraduationCap, Zap, Lock, ArrowRight, Users
+  Coins, X, Check, ShieldCheck, RotateCcw, Sparkles, AlertCircle, HeartHandshake, Gift, GraduationCap, Zap, Lock, ArrowRight, Users, CreditCard
 } from 'lucide-react';
+import { CardWindow } from './CardWindow';
 import {
   Balance, capturePayPalOrder, claimFromPool, createPayPalOrder, CreditError, CreditStatus, loadPayPalSdk, PreparedOrder, Purpose
 } from '../lib/credits';
@@ -83,6 +84,8 @@ const Confetti: React.FC = () => {
   );
 };
 
+const DECLINED = 'This card was declined. Try another card.';
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 // Buying credits with PayPal (sandbox), for yourself or as a gift to students who cannot pay. Orders are
@@ -102,13 +105,51 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
   // who it is for is instant instead of reloading PayPal
   const choice = useRef({ packId, purpose });
   choice.current = { packId, purpose };
+  const [sdk, setSdk] = useState<any>(null);          // PayPal's SDK, once loaded
+  const [cardOpen, setCardOpen] = useState(false);    // The "Pay by card" window
 
-  // Escape closes, as with the other dialogs (not in the middle of confirming a payment)
+  // The order for the current choice: the assistant's prepared one when it matches, else a new one
+  const createOrderId = async () => {
+    setMessage(null);
+    const { packId: chosenPack, purpose: chosenPurpose } = choice.current;
+    const ready = prepared.current;
+    prepared.current = null;
+    if (ready && ready.pack === chosenPack && ready.purpose === chosenPurpose) return ready.id;
+    try { return (await createPayPalOrder(chosenPack, chosenPurpose)).id; }
+    catch (error: any) { setMessage(error.message); throw error; }
+  };
+
+  // Captures an approved order and shows the result; returns a message when it did not go through
+  const approve = async (orderId: string): Promise<string | null> => {
+    setPhase('paying');
+    try {
+      const paid = await capturePayPalOrder(orderId);
+      setResult({ added: paid.added || 0, purpose: paid.purpose });
+      setCardOpen(false);
+      setPhase('done');
+      onPaid(paid, paid.added || 0, paid.purpose);
+      return null;
+    } catch (error: any) {
+      if (error instanceof CreditError && error.balance) onBalance(error.balance);
+      setPhase('ready');
+      return error instanceof CreditError && error.code === 'INSTRUMENT_DECLINED'
+        ? DECLINED
+        : error.message || 'The payment could not be confirmed. Please try again.';
+    }
+  };
+  const handlers = useRef({ createOrderId, approve });
+  handlers.current = { createOrderId, approve };
+
+  // Escape closes the card window first, then this one (not in the middle of confirming a payment)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && phase !== 'paying') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || phase === 'paying') return;
+      if (cardOpen) setCardOpen(false);
+      else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, phase]);
+  }, [onClose, phase, cardOpen]);
 
   // PayPal's buttons, drawn once for the whole dialog
   useEffect(() => {
@@ -124,31 +165,18 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
     loadPayPalSdk(status.paypal.clientId).then(paypal => {
       if (gone || !holder.current) return;
       holder.current.innerHTML = '';
+      setSdk(paypal);
+      // Only the PayPal button here: cards are paid in their own window (the button under this one)
       buttons = paypal.Buttons({
+        fundingSource: paypal.FUNDING.PAYPAL,
         style: { layout: 'vertical', shape: 'pill', color: 'gold', label: 'pay', height: 50, tagline: false },
-        createOrder: async () => {
-          setMessage(null);
-          const { packId: chosenPack, purpose: chosenPurpose } = choice.current;
-          const ready = prepared.current;
-          prepared.current = null;
-          if (ready && ready.pack === chosenPack && ready.purpose === chosenPurpose) return ready.id;
-          try { return (await createPayPalOrder(chosenPack, chosenPurpose)).id; }
-          catch (error: any) { setMessage(error.message); throw error; }
-        },
+        createOrder: () => handlers.current.createOrderId(),
         onApprove: async (data: { orderID: string }, actions: any) => {
-          setPhase('paying');
-          try {
-            const paid = await capturePayPalOrder(data.orderID);
-            setResult({ added: paid.added || 0, purpose: paid.purpose });
-            setPhase('done');
-            onPaid(paid, paid.added || 0, paid.purpose);
-          } catch (error: any) {
-            // A declined card or balance: PayPal lets the buyer pick another way to pay in the same window
-            if (error instanceof CreditError && error.code === 'INSTRUMENT_DECLINED') return actions.restart();
-            if (error instanceof CreditError && error.balance) onBalance(error.balance);
-            setMessage(error.message);
-            setPhase('ready');
-          }
+          const problem = await handlers.current.approve(data.orderID);
+          if (!problem) return;
+          // A declined balance or card: PayPal lets the buyer pick another way to pay in the same window
+          if (problem === DECLINED) return actions.restart();
+          setMessage(problem);
         },
         onCancel: () => setMessage('Payment cancelled. Nothing was charged.'),
         onError: (error: any) => {
@@ -438,10 +466,33 @@ export const CreditsDialog: React.FC<CreditsDialogProps> = ({ status, request, o
                     {busy ? 'Confirming your payment with PayPal…' : 'Loading secure checkout…'}
                   </div>
                 )}
-                {/* PayPal's buttons on a dark panel: a browser that darkens pages shows PayPal's card form
-                    dark and seamless on it; elsewhere PayPal's own white card sits framed inside */}
-                <div ref={holder} className="rounded-2xl bg-[#121718] border border-white/[0.08] p-2.5 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]" aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
+                {/* Two ways to pay: PayPal's own button, and a card, which opens its own window. PayPal's
+                    frame keeps a light colour scheme, as its page has, so the browser draws it transparent
+                    over the dark panel instead of on a white box */}
+                <div className="rounded-2xl bg-[#121718] border border-white/[0.08] p-3 space-y-3 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]">
+                  <div ref={holder} style={{ colorScheme: 'light' }} aria-label={pack ? `Pay $${pack.price} with PayPal` : 'Pay with PayPal'}></div>
+                  <button
+                    onClick={() => { setMessage(null); setCardOpen(true); }}
+                    disabled={!sdk || phase !== 'ready'}
+                    className="w-full h-[50px] inline-flex items-center justify-center gap-2.5 rounded-full bg-[#2c3133] hover:bg-[#394043] border border-white/10 text-white text-[16px] font-semibold disabled:opacity-60"
+                  >
+                    <CreditCard className="w-5 h-5" /> Debit or Credit Card
+                  </button>
+                </div>
               </div>
+            )}
+
+            {cardOpen && sdk && pack && (
+              <CardWindow
+                paypal={sdk}
+                price={pack.price}
+                credits={pack.credits}
+                gift={sponsoring}
+                colours={look}
+                createOrder={createOrderId}
+                approve={approve}
+                onClose={() => setCardOpen(false)}
+              />
             )}
 
             {/* Reassurance, in three short badges */}

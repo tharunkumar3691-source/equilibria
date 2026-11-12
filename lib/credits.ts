@@ -79,7 +79,7 @@ export function loadPayPalSdk(clientId: string): Promise<any> {
     // buyer-country (sandbox only, as this app is): PayPal's checkout otherwise guesses the country from the
     // visitor's address, and in some countries (India, for one) its card form then asks for a local phone
     // number and an SMS code, which sandbox test cards cannot pass. Testers anywhere get the same checkout.
-    const params = new URLSearchParams({ 'client-id': clientId, currency: 'USD', intent: 'capture', components: 'buttons', 'buyer-country': 'US',
+    const params = new URLSearchParams({ 'client-id': clientId, currency: 'USD', intent: 'capture', components: 'buttons,card-fields', 'buyer-country': 'US',
       // Pay Later (instalments) has no place in a $2 purchase of credits
       'disable-funding': 'paylater' });
     script.src = `https://www.paypal.com/sdk/js?${params}`;

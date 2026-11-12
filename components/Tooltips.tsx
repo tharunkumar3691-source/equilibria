@@ -93,8 +93,9 @@ export const Tooltips: React.FC = () => {
         const targetOf = (node: EventTarget | null): HTMLElement | null => {
             if (!(node instanceof Element)) return null;
             const el = node.closest<HTMLElement>('[title], [data-tip]');
-            // Text fields explain themselves; a tip over them would cover what is being typed
-            if (!el || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
+            // Text fields explain themselves; a tip over them would cover what is being typed. Frames (PayPal's
+            // card fields) carry titles meant for screen readers, not for display
+            if (!el || /^(INPUT|TEXTAREA|SELECT|IFRAME)$/.test(el.tagName)) return null;
             return el;
         };
 
